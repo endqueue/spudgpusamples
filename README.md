@@ -138,15 +138,16 @@ driver/hardware support that varies, surfaced via
 `Dragon_LOD0.bin` meshlet asset shipped with the original D3D12 sample,
 one GLSL mesh shader (`GL_EXT_mesh_shader`) cross-compiled to all three
 targets exactly like every other sample's shaders. This sample's four
-meshlet data buffers need `SPUDGPU_BUFFER_USAGE_STORAGE`, which can't be
-combined with a host-visible/mappable memory type on D3D12 — an UPLOAD-heap
-resource there can't carry `D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS`,
-which that usage bit always adds on that backend (Vulkan/Metal have no such
-restriction: a host-visible storage buffer is completely normal on both).
+meshlet data buffers need `SPUDGPU_BUFFER_USAGE_STORAGE`, which
+`SPUDGPU_MEMORY_KIND_UPLOAD` refuses on every backend — the rule comes from
+D3D12, where an UPLOAD-heap resource can't carry
+`D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS`, and SpudGPU holds every
+backend to it (the mappable kind that does take `STORAGE`,
+`SPUDGPU_MEMORY_KIND_DEVICE_MAPPABLE`, exists only on some devices).
 Getting this sample running on D3D12 closed a real gap in `spudgpu` itself:
 **`spudgpu_cmd_copy_buffer` (buffer-to-buffer copy) didn't exist on any
 backend**, so the textbook fix — stage the CPU data through a small
-`TRANSFER_SRC` buffer, then copy into a real `DEVICE_LOCAL` buffer — wasn't
+`TRANSFER_SRC` buffer, then copy into a real `SPUDGPU_MEMORY_KIND_DEVICE` buffer — wasn't
 available. Now added (`vkCmdCopyBuffer` / `CopyBufferRegion`; Metal's
 `MTLBlitCommandEncoder` copy was initially left as an unimplemented
 placeholder like this file's other blit functions, unverified without Apple
@@ -256,7 +257,7 @@ repo sits alongside.
 
 Each sample is a standalone executable target linking `spudlib`. Windowing
 and surface creation use SDL3 + `spudgpu_sdl3.h` (the same approach as
-`Erethal_SDL3_ImGui`), so samples build and run identically on Windows and
+`Erethal_SDL3_ImGui`, which is deprecated), so samples build and run identically on Windows and
 Linux. Pick a graphics backend via the `GRAPHICS_BACKEND` cache variable
 (`Vulkan` or `D3D12`), same as `spudlib` itself.
 

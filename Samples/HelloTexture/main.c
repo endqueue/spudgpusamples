@@ -126,7 +126,6 @@ static spudgpu_image upload_rgba8_texture(
 	spudgpu_image_desc image_desc = {
 	    .usage        = SPUDGPU_IMAGE_USAGE_SAMPLED | SPUDGPU_IMAGE_USAGE_TRANSFER_DST,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_DEVICE_LOCAL,
 	    .format       = SPUDGPU_FORMAT_R8G8B8A8_UNORM,
 	    .width        = width,
 	    .height       = height,
@@ -147,7 +146,7 @@ static spudgpu_image upload_rgba8_texture(
 
 	spudgpu_buffer_desc staging_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_TRANSFER_SRC,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = total_size,
 	};
 	spudgpu_buffer staging = NULL;
@@ -160,6 +159,7 @@ static spudgpu_image upload_rgba8_texture(
 	spudgpu_map_buffer(staging, 0, 0, (void **) &mapped);
 	for (uint32_t y = 0; y < height; y++)
 		memcpy(mapped + y * row_pitch, pixels + (size_t) y * width * 4, (size_t) width * 4);
+	spudgpu_flush_buffer(staging, 0, 0);
 	spudgpu_unmap_buffer(staging);
 
 	spudgpu_cmd_image_barrier(cmd, image, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_TRANSFER_DST);
@@ -251,7 +251,7 @@ int main(void) {
 	spudgpu_command_list cmd = NULL;
 	spudgpu_create_command_list(command_allocator, &cmd);
 
-	// Vertex buffer: one hardcoded triangle with UVs, host-visible and
+	// Vertex buffer: one hardcoded triangle with UVs, UPLOAD memory
 	// written once -- same aspect-ratio-corrected shape as the original.
 	float aspect_ratio = (float) WINDOW_WIDTH / (float) WINDOW_HEIGHT;
 	Vertex vertices[3] = {
@@ -262,7 +262,7 @@ int main(void) {
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(vertices),
 	};
 	spudgpu_buffer vertex_buffer = NULL;
@@ -274,6 +274,7 @@ int main(void) {
 	void *vertex_mapped = NULL;
 	spudgpu_map_buffer(vertex_buffer, 0, 0, &vertex_mapped);
 	memcpy(vertex_mapped, vertices, sizeof(vertices));
+	spudgpu_flush_buffer(vertex_buffer, 0, 0);
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_buffer_view_desc = {

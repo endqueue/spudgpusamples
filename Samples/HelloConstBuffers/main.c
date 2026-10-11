@@ -129,7 +129,7 @@ int main(void) {
 		return 1;
 	}
 
-	// Vertex buffer: one hardcoded triangle, host-visible and written once --
+	// Vertex buffer: one hardcoded triangle, UPLOAD memory written once --
 	// same "just enough to draw a triangle" scope as HelloTriangle.
 	static const Vertex vertices[3] = {
 	    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
@@ -139,7 +139,7 @@ int main(void) {
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(vertices),
 	};
 	spudgpu_buffer vertex_buffer = NULL;
@@ -151,6 +151,7 @@ int main(void) {
 	void *mapped = NULL;
 	spudgpu_map_buffer(vertex_buffer, 0, 0, &mapped);
 	memcpy(mapped, vertices, sizeof(vertices));
+	spudgpu_flush_buffer(vertex_buffer, 0, 0);
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_buffer_view_desc = {
@@ -167,7 +168,7 @@ int main(void) {
 	// (map once, memcpy new contents in each frame, never unmap until exit).
 	spudgpu_buffer_desc scene_cb_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(SceneConstantBuffer),
 	};
 	spudgpu_buffer scene_cb = NULL;
@@ -179,6 +180,7 @@ int main(void) {
 	void *scene_cb_mapped             = NULL;
 	spudgpu_map_buffer(scene_cb, 0, 0, &scene_cb_mapped);
 	memcpy(scene_cb_mapped, &scene_cb_data, sizeof(scene_cb_data));
+	spudgpu_flush_buffer(scene_cb, 0, sizeof(scene_cb_data));
 
 	// Descriptor set layout: one uniform buffer at binding 0, visible to the
 	// vertex stage only (the fragment shader never reads it).
@@ -282,6 +284,7 @@ int main(void) {
 		if (scene_cb_data.offset[0] > offset_bounds)
 			scene_cb_data.offset[0] = -offset_bounds;
 		memcpy(scene_cb_mapped, &scene_cb_data, sizeof(scene_cb_data));
+		spudgpu_flush_buffer(scene_cb, 0, sizeof(scene_cb_data));
 
 		uint32_t image_index              = spudgpu_swap_chain_acquire_next_image(swap_chain);
 		spudgpu_image_view backbuffer_view = spudgpu_get_swap_chain_image_view(swap_chain, image_index);

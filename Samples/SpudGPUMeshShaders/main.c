@@ -309,14 +309,13 @@ static spudgpu_shader_module load_shader_module(
 	return module;
 }
 
-// Creates a device-local storage buffer and uploads [data, data+size) into
-// it once, via a temporary host-visible staging buffer + spudgpu_cmd_copy_buffer
-// (now implemented on every backend). HOST_VISIBLE + STORAGE together (a
-// directly-mappable storage buffer) is invalid on D3D12 -- an UPLOAD-heap
-// resource can't carry D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, which
-// SPUDGPU_BUFFER_USAGE_STORAGE always adds there -- so this can't just map
-// the real buffer directly the way every other one-time upload in this
-// suite does. Synchronous (one begin/end/submit/wait per call): this only
+// Creates a storage buffer in DEVICE memory and uploads [data, data+size)
+// into it once, via a temporary UPLOAD staging buffer + spudgpu_cmd_copy_buffer.
+// SPUDGPU_MEMORY_KIND_UPLOAD refuses SPUDGPU_BUFFER_USAGE_STORAGE on every
+// backend, and the one mappable kind that takes it
+// (SPUDGPU_MEMORY_KIND_DEVICE_MAPPABLE) isn't on every device -- so this
+// can't just map the real buffer directly the way every other one-time
+// upload in this suite does. Synchronous (one begin/end/submit/wait per call): this only
 // runs a handful of times at startup, so the simplicity is worth more than
 // batching all four uploads into one submission.
 static spudgpu_buffer create_storage_buffer_with_data(
@@ -324,7 +323,7 @@ static spudgpu_buffer create_storage_buffer_with_data(
     const void *data, uint64_t size) {
 	spudgpu_buffer_desc staging_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_TRANSFER_SRC,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = size,
 	};
 	spudgpu_buffer staging = NULL;
@@ -335,11 +334,12 @@ static spudgpu_buffer create_storage_buffer_with_data(
 	void *mapped = NULL;
 	spudgpu_map_buffer(staging, 0, 0, &mapped);
 	memcpy(mapped, data, size);
+	spudgpu_flush_buffer(staging, 0, 0);
 	spudgpu_unmap_buffer(staging);
 
 	spudgpu_buffer_desc real_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_STORAGE | SPUDGPU_BUFFER_USAGE_TRANSFER_DST,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_DEVICE_LOCAL,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_DEVICE,
 	    .size         = size,
 	};
 	spudgpu_buffer buffer = NULL;
@@ -554,7 +554,7 @@ int main(void) {
 
 	spudgpu_buffer_desc globals_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(Globals),
 	};
 	spudgpu_buffer globals_buffer = NULL;
@@ -600,7 +600,6 @@ int main(void) {
 	spudgpu_image_desc depth_image_desc = {
 	    .usage        = SPUDGPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_DEVICE_LOCAL,
 	    .format       = SPUDGPU_FORMAT_D32_FLOAT,
 	    .width        = WINDOW_WIDTH,
 	    .height       = WINDOW_HEIGHT,
@@ -693,6 +692,7 @@ int main(void) {
 		mat4_multiply(proj, view, globals_data.world_view_proj);
 		globals_data.draw_meshlets = 1;
 		memcpy(globals_mapped, &globals_data, sizeof(globals_data));
+		spudgpu_flush_buffer(globals_buffer, 0, sizeof(globals_data));
 
 		uint32_t image_index               = spudgpu_swap_chain_acquire_next_image(swap_chain);
 		spudgpu_image_view backbuffer_view = spudgpu_get_swap_chain_image_view(swap_chain, image_index);

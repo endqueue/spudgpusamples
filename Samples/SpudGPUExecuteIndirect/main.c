@@ -197,7 +197,7 @@ int main(void) {
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(vertices),
 	};
 	spudgpu_buffer vertex_buffer = NULL;
@@ -208,6 +208,7 @@ int main(void) {
 	void *vertex_mapped = NULL;
 	spudgpu_map_buffer(vertex_buffer, 0, 0, &vertex_mapped);
 	memcpy(vertex_mapped, vertices, sizeof(vertices));
+	spudgpu_flush_buffer(vertex_buffer, 0, 0);
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_buffer_view_desc = {
@@ -240,7 +241,7 @@ int main(void) {
 
 	spudgpu_buffer_desc scene_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM | SPUDGPU_BUFFER_USAGE_VERTEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(scene_cb_data),
 	};
 	spudgpu_buffer scene_buffer = NULL;
@@ -251,6 +252,7 @@ int main(void) {
 	void *scene_mapped = NULL;
 	spudgpu_map_buffer(scene_buffer, 0, 0, &scene_mapped);
 	memcpy(scene_mapped, scene_cb_data, sizeof(scene_cb_data));
+	spudgpu_flush_buffer(scene_buffer, 0, sizeof(scene_cb_data));
 
 	spudgpu_buffer_view_desc scene_buffer_view_desc = {
 	    .parent_buffer             = scene_buffer,
@@ -270,7 +272,7 @@ int main(void) {
 
 	spudgpu_buffer_desc projection_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(projection),
 	};
 	spudgpu_buffer projection_buffer = NULL;
@@ -281,14 +283,15 @@ int main(void) {
 	void *projection_mapped = NULL;
 	spudgpu_map_buffer(projection_buffer, 0, 0, &projection_mapped);
 	memcpy(projection_mapped, projection, sizeof(projection));
+	spudgpu_flush_buffer(projection_buffer, 0, 0);
 	spudgpu_unmap_buffer(projection_buffer);
 
 	// Input draw-argument buffer: TRIANGLE_COUNT plain draw commands, built
 	// once and never touched again -- first_instance bakes in the triangle's
 	// index into scene_buffer (see shaders/scene.vert). UNIFORM (not STORAGE)
-	// so it can stay host-visible/mapped on every backend (a host-visible
-	// STORAGE buffer isn't a valid combination on D3D12 -- UAV-flagged
-	// resources can't live on an upload heap), plus INDIRECT so it can be
+	// so it can be UPLOAD memory and written directly (UPLOAD refuses
+	// STORAGE on every backend: the GPU only reads it), plus INDIRECT so it
+	// can be
 	// read directly by spudgpu_cmd_draw_indirect when culling is off.
 	IndirectCommand input_commands[TRIANGLE_COUNT];
 	for (uint32_t i = 0; i < TRIANGLE_COUNT; i++) {
@@ -300,7 +303,7 @@ int main(void) {
 
 	spudgpu_buffer_desc input_commands_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM | SPUDGPU_BUFFER_USAGE_INDIRECT,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(input_commands),
 	};
 	spudgpu_buffer input_commands_buffer = NULL;
@@ -311,17 +314,17 @@ int main(void) {
 	void *input_commands_mapped = NULL;
 	spudgpu_map_buffer(input_commands_buffer, 0, 0, &input_commands_mapped);
 	memcpy(input_commands_mapped, input_commands, sizeof(input_commands));
+	spudgpu_flush_buffer(input_commands_buffer, 0, 0);
 	spudgpu_unmap_buffer(input_commands_buffer);
 
 	// Output draw-argument buffer: written by the compute pass every frame
 	// (real args for a visible triangle, zeroed vertex_count for a culled
 	// one), then read directly as the indirect-draw source. STORAGE (the
-	// compute shader writes it) + INDIRECT, device-local only -- it's never
-	// touched from the CPU, so the STORAGE-on-upload-heap problem above
-	// doesn't apply here.
+	// compute shader writes it) + INDIRECT, in DEVICE memory -- it's never
+	// touched from the CPU, so nothing needs it mapped.
 	spudgpu_buffer_desc output_commands_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_STORAGE | SPUDGPU_BUFFER_USAGE_INDIRECT,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_DEVICE_LOCAL,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_DEVICE,
 	    .size         = sizeof(input_commands),
 	};
 	spudgpu_buffer output_commands_buffer = NULL;
@@ -508,6 +511,7 @@ int main(void) {
 			}
 		}
 		memcpy(scene_mapped, scene_cb_data, sizeof(scene_cb_data));
+		spudgpu_flush_buffer(scene_buffer, 0, sizeof(scene_cb_data));
 
 		uint32_t image_index               = spudgpu_swap_chain_acquire_next_image(swap_chain);
 		spudgpu_image_view backbuffer_view = spudgpu_get_swap_chain_image_view(swap_chain, image_index);

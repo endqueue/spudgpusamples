@@ -349,7 +349,6 @@ static spudgpu_image upload_rgba8_texture(
 	spudgpu_image_desc image_desc = {
 	    .usage        = SPUDGPU_IMAGE_USAGE_SAMPLED | SPUDGPU_IMAGE_USAGE_TRANSFER_DST,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_DEVICE_LOCAL,
 	    .format       = SPUDGPU_FORMAT_R8G8B8A8_UNORM,
 	    .width        = width,
 	    .height       = height,
@@ -370,7 +369,7 @@ static spudgpu_image upload_rgba8_texture(
 
 	spudgpu_buffer_desc staging_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_TRANSFER_SRC,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = total_size,
 	};
 	spudgpu_buffer staging = NULL;
@@ -383,6 +382,7 @@ static spudgpu_image upload_rgba8_texture(
 	spudgpu_map_buffer(staging, 0, 0, (void **) &mapped);
 	for (uint32_t y = 0; y < height; y++)
 		memcpy(mapped + y * row_pitch, pixels + (size_t) y * width * 4, (size_t) width * 4);
+	spudgpu_flush_buffer(staging, 0, 0);
 	spudgpu_unmap_buffer(staging);
 
 	spudgpu_cmd_image_barrier(cmd, image, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_TRANSFER_DST);
@@ -485,7 +485,7 @@ int main(void) {
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = VERTEX_DATA_SIZE,
 	};
 	spudgpu_buffer vertex_buffer = NULL;
@@ -493,6 +493,7 @@ int main(void) {
 	void *vertex_mapped = NULL;
 	spudgpu_map_buffer(vertex_buffer, 0, 0, &vertex_mapped);
 	memcpy(vertex_mapped, mesh_data + VERTEX_DATA_OFFSET, VERTEX_DATA_SIZE);
+	spudgpu_flush_buffer(vertex_buffer, 0, 0);
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_view_desc = {
@@ -502,7 +503,7 @@ int main(void) {
 
 	spudgpu_buffer_desc index_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_INDEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = INDEX_DATA_SIZE,
 	};
 	spudgpu_buffer index_buffer = NULL;
@@ -510,6 +511,7 @@ int main(void) {
 	void *index_mapped = NULL;
 	spudgpu_map_buffer(index_buffer, 0, 0, &index_mapped);
 	memcpy(index_mapped, mesh_data + INDEX_DATA_OFFSET, INDEX_DATA_SIZE);
+	spudgpu_flush_buffer(index_buffer, 0, 0);
 	spudgpu_unmap_buffer(index_buffer);
 
 	spudgpu_buffer_view_desc index_view_desc = {
@@ -646,7 +648,7 @@ int main(void) {
 	const uint32_t cbv_stride = 256; // D3D12 CBV alignment; harmless elsewhere.
 	spudgpu_buffer_desc cbv_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = (uint64_t) cbv_stride * CITY_MATERIAL_COUNT,
 	};
 	spudgpu_buffer cbv_buffer = NULL;
@@ -711,7 +713,6 @@ int main(void) {
 	spudgpu_image_desc depth_image_desc = {
 	    .usage        = SPUDGPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_DEVICE_LOCAL,
 	    .format       = SPUDGPU_FORMAT_D32_FLOAT,
 	    .width        = WINDOW_WIDTH,
 	    .height       = WINDOW_HEIGHT,
@@ -783,6 +784,7 @@ int main(void) {
 			float mvp[16];
 			mat4_multiply(view_proj, model_matrices[i], mvp);
 			memcpy((uint8_t *) cbv_mapped + i * cbv_stride, mvp, sizeof(mvp));
+			spudgpu_flush_buffer(cbv_buffer, i * cbv_stride, sizeof(mvp));
 		}
 
 		uint32_t image_index               = spudgpu_swap_chain_acquire_next_image(swap_chain);

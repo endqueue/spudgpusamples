@@ -120,7 +120,7 @@ int main(void) {
 		return 1;
 	}
 
-	// Vertex buffer: one hardcoded triangle, host-visible and written once --
+	// Vertex buffer: one hardcoded triangle, UPLOAD memory written once --
 	// same "just enough to draw a triangle" scope as the D3D12 sample.
 	static const Vertex vertices[3] = {
 	    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
@@ -130,7 +130,7 @@ int main(void) {
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(vertices),
 	};
 	spudgpu_buffer vertex_buffer = NULL;
@@ -142,6 +142,7 @@ int main(void) {
 	void *mapped = NULL;
 	spudgpu_map_buffer(vertex_buffer, 0, 0, &mapped);
 	memcpy(mapped, vertices, sizeof(vertices));
+	spudgpu_flush_buffer(vertex_buffer, 0, 0);
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_buffer_view_desc = {

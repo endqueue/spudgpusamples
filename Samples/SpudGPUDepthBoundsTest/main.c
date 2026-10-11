@@ -148,7 +148,7 @@ int main(void) {
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_HOST_VISIBLE | SPUDGPU_MEMORY_FLAGS_HOST_COHERENT,
+	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(vertices),
 	};
 	spudgpu_buffer vertex_buffer = NULL;
@@ -160,6 +160,7 @@ int main(void) {
 	void *mapped = NULL;
 	spudgpu_map_buffer(vertex_buffer, 0, 0, &mapped);
 	memcpy(mapped, vertices, sizeof(vertices));
+	spudgpu_flush_buffer(vertex_buffer, 0, 0);
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_buffer_view_desc = {
@@ -234,7 +235,6 @@ int main(void) {
 	spudgpu_image_desc depth_image_desc = {
 	    .usage        = SPUDGPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
-	    .memory_flags = SPUDGPU_MEMORY_FLAGS_DEVICE_LOCAL,
 	    .format       = SPUDGPU_FORMAT_D32_FLOAT,
 	    .width        = WINDOW_WIDTH,
 	    .height       = WINDOW_HEIGHT,
