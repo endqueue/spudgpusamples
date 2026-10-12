@@ -25,6 +25,7 @@ workaround to invent here.
 | SpudGPUMeshShaders | `D3D12MeshShaders/MeshletRender` | Ported, all backends (see note below) |
 | SpudGPUBundles | `D3D12Bundles` | Ported, Vulkan/D3D12 only (see note below) |
 | SpudGPUDepthBoundsTest | `D3D12DepthBoundsTest` | Ported, all backends (see note below) |
+| SpudGPUHeaps | `D3D12SmallResources` | Written, all backends, never built or run (see note below) |
 
 `HelloTexture` closed a real gap and worked around another. The gap it
 closed: `spudgpu_cmd_copy_buffer_to_image`/`_copy_image_to_buffer` and
@@ -249,6 +250,37 @@ color already shows through underneath, so the mechanism being demonstrated
 (an animated depth-bounds window carving a band out of the triangle) reads
 just as clearly, just with a highlight-over-base look rather than
 background-showing-through.
+
+`SpudGPUHeaps` is `D3D12SmallResources` under the name of the SpudGPU
+feature it exercises: heaps and the resources placed in them
+(`spudgpu_create_heap`, `spudgpu_get_*_placement_requirements`,
+`spudgpu_create_placed_buffer`/`_image`). The grid of 77 small textures is
+made either placed, one after another in a single heap, or committed, one
+device allocation each; Space switches between them, as in the original.
+The port goes further than the original in one place and falls short of it
+in two:
+
+- **Buffers are placed too.** The vertex buffer goes in a heap of device
+  memory, and the staging buffer that fills it and the textures in a heap of
+  upload memory, where `SPUDGPU_DEVICE_PROPERTIES::mappable_heaps` allows it
+  (a Mac without Apple silicon can't map a heap; the staging buffer is then
+  made with `spudgpu_create_buffer`).
+- **No memory figure for committed resources.** The original's title shows
+  `QueryVideoMemoryInfo`'s figure for each mode. SpudGPU has no memory
+  budget query yet, so the title shows the placed mode's heap size and
+  per-texture requirements, and says nothing measured for the committed
+  mode.
+- **No small-resource packing on D3D12 yet.** The original exists to show
+  `D3D12_SMALL_RESOURCE_PLACEMENT_ALIGNMENT` (4 KiB) letting small textures
+  share 64 KiB pages. SpudGPU's D3D12 backend places every texture at
+  64 KiB for now (see `spudlib/CLAUDE.md`), so on D3D12 the two modes cost
+  the same. On Vulkan and Metal the textures pack at whatever alignment the
+  driver reports.
+
+The sample was written against SpudGPU's heap calls the day they landed. It
+type-checks against the Vulkan and Metal configurations of `spudgpu.h` and
+its shaders compile with glslang, but it has not been built with a real
+toolchain or run on any backend.
 
 See `../spudlib/CLAUDE.md` and `../CLAUDE.md` for the architecture this
 repo sits alongside.

@@ -85,3 +85,10 @@ endif()
 # on Metal) is this sample's own concern, not a build-time one -- see
 # spudlib/include/spudgpu.h.
 add_subdirectory(Samples/SpudGPUDepthBoundsTest)
+
+# Heaps and placed resources have no SPUDGPU_EXT_* gate: all three backends
+# implement them, so this sample builds everywhere. A device whose heaps
+# can't be mapped (SPUDGPU_DEVICE_PROPERTIES::mappable_heaps false: a Mac
+# without Apple silicon) still runs it, with its staging buffer made on its
+# own instead of placed.
+add_subdirectory(Samples/SpudGPUHeaps)
