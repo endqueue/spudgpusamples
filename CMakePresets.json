@@ -27,7 +27,8 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-linux-vulkan",
       "cacheVariables": {
-        "GRAPHICS_BACKEND": "Vulkan"
+        "GRAPHICS_BACKEND": "Vulkan",
+        "SPUDGPU_LINUX_WSI": "Xlib"
       }
     },
     {
