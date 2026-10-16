@@ -368,3 +368,24 @@ first, both from SpudGPU's D3D12 backend:
   own shader-visible heaps, and D3D12 sets one CBV/SRV/UAV heap and one
   sampler heap at a time, so binding a set from a second pool unbound the
   first's. They now all take ranges of the device's two heaps.
+
+Later on 2026-10-16 every sample ran again, the same way, against SpudLib
+with the Mac's Metal work, the D3D12 fix for 2D views of a layer past the
+first and for cube views to render to or store into, storage cube images
+in D3D12 shaders, and Vulkan's `imageCubeArray`. On Vulkan every sample
+exited cleanly with no validation message on both devices (`SpudGPUMeshShaders`
+exits 1 on the Iris Xe, as before). On D3D12 there was no debug layer
+message on either device but one: `SpudGPUMeshShaders` on the Iris Xe
+returned from `main` without destroying the instance when it found no mesh
+shading, and the debug layer reported the device's live objects at process
+exit. Every sample now leaves `main` through one cleanup on every failure:
+each object `main` makes starts as NULL, a failure jumps to the cleanup at
+the end, which waits for the queue if there is one and destroys whatever
+exists, and the helpers that called `exit(1)` (reading a file, loading a
+shader, uploading a texture, `SpudGPUHeaps`' `check`) return NULL or false
+for the caller to jump. Only a failed `SDL_Init` still returns directly. Run
+again on both devices and both backends, every sample is clean as above, and
+each run with `--device 9` (a failure right after the instance is made)
+reports no live objects on D3D12. Under cdb, each run on the RTX A2000 also logs two first-chance
+C++ exceptions inside Intel's D3D12 driver as it loads, caught there, with
+no debug layer message.

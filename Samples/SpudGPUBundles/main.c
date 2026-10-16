@@ -278,28 +278,37 @@ static void camera_update(Camera *cam, float dt) {
 	cam->look_dir[2] = r * cosf(cam->yaw);
 }
 
+// NULL, printed, if the file can't be read.
 static void *read_entire_file(const char *path, size_t *out_size) {
 	FILE *f = fopen(path, "rb");
 	if (!f) {
 		fprintf(stderr, "Failed to open file: %s\n", path);
-		exit(1);
+		return NULL;
 	}
 	fseek(f, 0, SEEK_END);
 	long size = ftell(f);
 	fseek(f, 0, SEEK_SET);
 	void *buffer = malloc((size_t) size);
+	if (!buffer) {
+		fprintf(stderr, "No memory for file: %s\n", path);
+		fclose(f);
+		return NULL;
+	}
 	fread(buffer, 1, (size_t) size, f);
 	fclose(f);
 	*out_size = (size_t) size;
 	return buffer;
 }
 
+// NULL, printed, on failure.
 static spudgpu_shader_module load_shader_module(
     spudgpu_device device,
     const char *path,
     SPUDGPU_SHADER_STAGE stage) {
 	size_t code_size;
 	void *code = read_entire_file(path, &code_size);
+	if (!code)
+		return NULL;
 
 	spudgpu_shader_module_desc desc = {
 	    .stage      = stage,
@@ -311,7 +320,7 @@ static spudgpu_shader_module load_shader_module(
 	free(code);
 	if (SPUDFAIL(result)) {
 		fprintf(stderr, "spudgpu_create_shader_module failed for %s: %d\n", path, result);
-		exit(1);
+		return NULL;
 	}
 	return module;
 }
@@ -362,32 +371,56 @@ int main(int argc, char **argv) {
 	}
 	uint64_t frames_run = 0;
 
+	// Every object main makes, NULL until it is made. A failure jumps to
+	// cleanup, which destroys whatever exists: every destroy call takes NULL.
+	int exit_code                               = 1;
+	SDL_Window *window                          = NULL;
+	spudgpu_instance instance                   = NULL;
+	spudgpu_command_queue graphics_queue        = NULL;
+	spudgpu_surface surface                     = NULL;
+	spudgpu_swap_chain swap_chain               = NULL;
+	spudgpu_command_allocator command_allocator = NULL;
+	spudgpu_command_list cmd                    = NULL;
+	spudgpu_buffer vertex_buffer                = NULL;
+	spudgpu_buffer_view vertex_buffer_view      = NULL;
+	spudgpu_buffer index_buffer                 = NULL;
+	spudgpu_buffer_view index_buffer_view       = NULL;
+	spudgpu_descriptor_set_layout cbv_layout    = NULL;
+	spudgpu_descriptor_pool cbv_pool            = NULL;
+	spudgpu_buffer cbv_buffer                   = NULL;
+	spudgpu_shader_module vertex_module         = NULL;
+	spudgpu_shader_module fragment_module       = NULL;
+	spudgpu_shader_pipeline pipeline            = NULL;
+	spudgpu_image depth_image                   = NULL;
+	spudgpu_image_view depth_view               = NULL;
+	spudgpu_command_allocator bundle_allocator  = NULL;
+	spudgpu_command_list bundle                 = NULL;
+
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
 		return 1;
 	}
 
-	SDL_Window *window = SDL_CreateWindow("SpudGPU Bundles [Bundles ON]", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+	window = SDL_CreateWindow("SpudGPU Bundles [Bundles ON]", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
 	if (!window) {
 		fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-		return 1;
+		goto cleanup;
 	}
 
-	spudgpu_instance instance = NULL;
 	if (SPUDFAIL(spudgpu_create_instance("SpudGPUBundles", 1, "SpudGPUSamples", 1, &instance))) {
 		fprintf(stderr, "spudgpu_create_instance failed\n");
-		return 1;
+		goto cleanup;
 	}
 
 	spudgpu_device *devices = NULL;
 	uint32_t device_count   = 0;
 	if (SPUDFAIL(spudgpu_enumerate_devices(instance, &devices, &device_count)) || device_count == 0) {
 		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
-		return 1;
+		goto cleanup;
 	}
 	if (device_index >= device_count) {
 		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
-		return 1;
+		goto cleanup;
 	}
 	spudgpu_device device = devices[device_index];
 
@@ -395,12 +428,12 @@ int main(int argc, char **argv) {
 	spudgpu_get_device_properties(device, &device_properties);
 	printf("Using device: %s\n", device_properties.description);
 
-	spudgpu_command_queue graphics_queue = spudgpu_get_graphics_queue(device);
+	graphics_queue = spudgpu_get_graphics_queue(device);
 
-	spudgpu_surface surface = spudgpu_create_surface_from_sdl3(instance, window);
+	surface = spudgpu_create_surface_from_sdl3(instance, window);
 	if (!surface) {
 		fprintf(stderr, "spudgpu_create_surface_from_sdl3 failed\n");
-		return 1;
+		goto cleanup;
 	}
 
 	spudgpu_swap_chain_desc swap_chain_desc = {
@@ -413,17 +446,14 @@ int main(int argc, char **argv) {
 	    .present_mode    = SPUDGPU_PRESENT_MODE_FIFO,
 	    .fullscreen_mode = SPUDGPU_FULLSCREEN_MODE_WINDOWED,
 	};
-	spudgpu_swap_chain swap_chain = NULL;
 	if (SPUDFAIL(spudgpu_create_swap_chain(device, &swap_chain_desc, &swap_chain))) {
 		fprintf(stderr, "spudgpu_create_swap_chain failed\n");
-		return 1;
+		goto cleanup;
 	}
 
 	spudgpu_command_allocator_desc direct_allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
-	spudgpu_command_allocator command_allocator          = NULL;
 	spudgpu_create_command_allocator(device, &direct_allocator_desc, &command_allocator);
 
-	spudgpu_command_list cmd = NULL;
 	spudgpu_create_command_list(command_allocator, &cmd);
 
 	// ------------------------------------------------------------------
@@ -432,13 +462,14 @@ int main(int argc, char **argv) {
 
 	size_t mesh_data_size;
 	uint8_t *mesh_data = (uint8_t *) read_entire_file("occcity.bin", &mesh_data_size);
+	if (!mesh_data)
+		goto cleanup;
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = VERTEX_DATA_SIZE,
 	};
-	spudgpu_buffer vertex_buffer = NULL;
 	spudgpu_create_buffer(device, &vertex_buffer_desc, &vertex_buffer);
 	void *vertex_mapped = NULL;
 	spudgpu_map_buffer(vertex_buffer, 0, 0, &vertex_mapped);
@@ -448,7 +479,6 @@ int main(int argc, char **argv) {
 
 	spudgpu_buffer_view_desc vertex_view_desc = {
 	    .parent_buffer = vertex_buffer, .offset_from_parent_buffer = 0, .stride = VERTEX_STRIDE, .size = VERTEX_DATA_SIZE};
-	spudgpu_buffer_view vertex_buffer_view = NULL;
 	spudgpu_create_buffer_view(vertex_buffer, &vertex_view_desc, &vertex_buffer_view);
 
 	spudgpu_buffer_desc index_buffer_desc = {
@@ -456,7 +486,6 @@ int main(int argc, char **argv) {
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = INDEX_DATA_SIZE,
 	};
-	spudgpu_buffer index_buffer = NULL;
 	spudgpu_create_buffer(device, &index_buffer_desc, &index_buffer);
 	void *index_mapped = NULL;
 	spudgpu_map_buffer(index_buffer, 0, 0, &index_mapped);
@@ -467,7 +496,6 @@ int main(int argc, char **argv) {
 
 	spudgpu_buffer_view_desc index_view_desc = {
 	    .parent_buffer = index_buffer, .offset_from_parent_buffer = 0, .stride = 4, .size = INDEX_DATA_SIZE};
-	spudgpu_buffer_view index_buffer_view = NULL;
 	spudgpu_create_buffer_view(index_buffer, &index_view_desc, &index_buffer_view);
 
 	uint32_t index_count = INDEX_DATA_SIZE / 4;
@@ -480,12 +508,10 @@ int main(int argc, char **argv) {
 	    .bindings      = {{.binding = 0, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_VERTEX}},
 	    .binding_count = 1,
 	};
-	spudgpu_descriptor_set_layout cbv_layout = NULL;
 	spudgpu_create_descriptor_set_layout(device, &cbv_layout_desc, &cbv_layout);
 
 	spudgpu_descriptor_pool_desc cbv_pool_desc = {
 	    .max_sets = CITY_OBJECT_COUNT, .pool_sizes = {{.descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = CITY_OBJECT_COUNT}}, .pool_size_count = 1};
-	spudgpu_descriptor_pool cbv_pool = NULL;
 	spudgpu_create_descriptor_pool(device, &cbv_pool_desc, &cbv_pool);
 
 	const uint32_t cbv_stride = 256; // D3D12 CBV alignment; harmless elsewhere.
@@ -494,7 +520,6 @@ int main(int argc, char **argv) {
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = (uint64_t) cbv_stride * CITY_OBJECT_COUNT,
 	};
-	spudgpu_buffer cbv_buffer = NULL;
 	spudgpu_create_buffer(device, &cbv_buffer_desc, &cbv_buffer);
 	void *cbv_mapped = NULL;
 	spudgpu_map_buffer(cbv_buffer, 0, 0, &cbv_mapped);
@@ -531,8 +556,10 @@ int main(int argc, char **argv) {
 	// Pipeline + depth buffer.
 	// ------------------------------------------------------------------
 
-	spudgpu_shader_module vertex_module   = load_shader_module(device, "shaders/scene.vert.spv", SPUDGPU_SHADER_STAGE_VERTEX);
-	spudgpu_shader_module fragment_module = load_shader_module(device, "shaders/scene.frag.spv", SPUDGPU_SHADER_STAGE_FRAGMENT);
+	vertex_module   = load_shader_module(device, "shaders/scene.vert.spv", SPUDGPU_SHADER_STAGE_VERTEX);
+	fragment_module = load_shader_module(device, "shaders/scene.frag.spv", SPUDGPU_SHADER_STAGE_FRAGMENT);
+	if (!vertex_module || !fragment_module)
+		goto cleanup;
 
 	spudgpu_shader_pipeline_desc pipeline_desc = {
 	    .vertex_module   = vertex_module,
@@ -556,10 +583,9 @@ int main(int argc, char **argv) {
 	    .descriptor_set_layouts      = {cbv_layout},
 	    .descriptor_set_layout_count = 1,
 	};
-	spudgpu_shader_pipeline pipeline = NULL;
 	if (SPUDFAIL(spudgpu_create_shader_pipeline(device, &pipeline_desc, &pipeline))) {
 		fprintf(stderr, "spudgpu_create_shader_pipeline failed\n");
-		return 1;
+		goto cleanup;
 	}
 
 	spudgpu_image_desc depth_image_desc = {
@@ -573,17 +599,15 @@ int main(int argc, char **argv) {
 	    .mip_levels   = 1,
 	    .clear_value  = {.format = SPUDGPU_FORMAT_D32_FLOAT, .depth_stencil = {.depth = 1.0f, .stencil = 0}},
 	};
-	spudgpu_image depth_image = NULL;
 	if (SPUDFAIL(spudgpu_create_image(device, &depth_image_desc, &depth_image))) {
 		fprintf(stderr, "spudgpu_create_image (depth) failed\n");
-		return 1;
+		goto cleanup;
 	}
 	spudgpu_image_view_desc depth_view_desc = {
 	    .parent_image = depth_image,
 	    .type         = SPUDGPU_IMAGE_VIEW_TYPE_2D,
 	    .subresource_range = {.aspect_mask = SPUDGPU_ASPECT_DEPTH_BIT, .base_mip_level = 0, .mip_level_count = 1, .base_array_layer = 0, .array_layer_count = 1},
 	};
-	spudgpu_image_view depth_view = NULL;
 	spudgpu_create_image_view(depth_image, &depth_view_desc, &depth_view);
 
 	// cmd was created via spudgpu_create_command_list but never begun -- a
@@ -603,15 +627,13 @@ int main(int argc, char **argv) {
 	// ------------------------------------------------------------------
 
 	spudgpu_command_allocator_desc bundle_allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_BUNDLE};
-	spudgpu_command_allocator bundle_allocator           = NULL;
 	if (SPUDFAIL(spudgpu_create_command_allocator(device, &bundle_allocator_desc, &bundle_allocator))) {
 		fprintf(stderr, "spudgpu_create_command_allocator (bundle) failed\n");
-		return 1;
+		goto cleanup;
 	}
-	spudgpu_command_list bundle = NULL;
 	if (SPUDFAIL(spudgpu_create_command_list(bundle_allocator, &bundle))) {
 		fprintf(stderr, "spudgpu_create_command_list (bundle) failed\n");
-		return 1;
+		goto cleanup;
 	}
 
 	spudgpu_bundle_inheritance_desc bundle_inheritance = {
@@ -733,7 +755,11 @@ int main(int argc, char **argv) {
 		spudgpu_swap_chain_present(swap_chain);
 	}
 
-	spudgpu_queue_wait_idle(graphics_queue);
+	exit_code = 0;
+
+cleanup:
+	if (graphics_queue)
+		spudgpu_queue_wait_idle(graphics_queue);
 
 	spudgpu_destroy_command_list(bundle);
 	spudgpu_destroy_command_allocator(bundle_allocator);
@@ -742,7 +768,8 @@ int main(int argc, char **argv) {
 	spudgpu_destroy_shader_pipeline(pipeline);
 	spudgpu_destroy_shader_module(fragment_module);
 	spudgpu_destroy_shader_module(vertex_module);
-	spudgpu_unmap_buffer(cbv_buffer);
+	if (cbv_buffer)
+		spudgpu_unmap_buffer(cbv_buffer);
 	spudgpu_destroy_buffer(cbv_buffer);
 	spudgpu_destroy_descriptor_pool(cbv_pool);
 	spudgpu_destroy_descriptor_set_layout(cbv_layout);
@@ -756,7 +783,8 @@ int main(int argc, char **argv) {
 	spudgpu_destroy_surface(surface);
 	spudgpu_destroy_instance(instance);
 
-	SDL_DestroyWindow(window);
+	if (window)
+		SDL_DestroyWindow(window);
 	SDL_Quit();
-	return 0;
+	return exit_code;
 }
