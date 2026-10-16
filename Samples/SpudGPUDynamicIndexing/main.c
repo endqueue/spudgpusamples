@@ -408,7 +408,22 @@ static spudgpu_image upload_rgba8_texture(
 	return image;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+	// --frames N: render N frames, then leave the loop as closing the window
+	// does, through the same cleanup. Without it the sample runs until the
+	// window is closed.
+	// --device N: use the Nth device spudgpu_enumerate_devices lists. 0 if
+	// not given.
+	uint64_t frame_limit  = 0;
+	uint32_t device_index = 0;
+	for (int i = 1; i + 1 < argc; ++i) {
+		if (strcmp(argv[i], "--frames") == 0)
+			frame_limit = strtoull(argv[i + 1], NULL, 10);
+		else if (strcmp(argv[i], "--device") == 0)
+			device_index = (uint32_t)strtoul(argv[i + 1], NULL, 10);
+	}
+	uint64_t frames_run = 0;
+
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
 		return 1;
@@ -432,7 +447,11 @@ int main(void) {
 		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
 		return 1;
 	}
-	spudgpu_device device = devices[0];
+	if (device_index >= device_count) {
+		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
+		return 1;
+	}
+	spudgpu_device device = devices[device_index];
 
 	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
 	spudgpu_get_device_properties(device, &device_properties);
@@ -697,7 +716,8 @@ int main(void) {
 	    .depth_test_enable      = true,
 	    .depth_write_enable     = true,
 	    .depth_compare_op       = SPUDGPU_COMPARE_OP_LESS,
-	    .color_attachment_format = SPUDGPU_FORMAT_B8G8R8A8_UNORM,
+	    .color_attachment_formats = {SPUDGPU_FORMAT_B8G8R8A8_UNORM},
+	    .color_attachment_count  = 1,
 	    .depth_format            = SPUDGPU_FORMAT_D32_FLOAT,
 	    .descriptor_set_layouts      = {bindless_layout, sampler_layout, cbv_layout},
 	    .descriptor_set_layout_count = 3,
@@ -733,7 +753,6 @@ int main(void) {
 	};
 	spudgpu_image_view depth_view = NULL;
 	spudgpu_create_image_view(depth_image, &depth_view_desc, &depth_view);
-	spudgpu_cmd_image_barrier(cmd, depth_image, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
 	// ------------------------------------------------------------------
 	// Main loop.
@@ -747,6 +766,9 @@ int main(void) {
 
 	bool running = true;
 	while (running) {
+		if (frame_limit != 0 && frames_run == frame_limit)
+			break;
+		++frames_run;
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_EVENT_QUIT)
@@ -794,6 +816,10 @@ int main(void) {
 		spudgpu_begin_command_list(cmd);
 
 		spudgpu_cmd_image_barrier_view(cmd, backbuffer_view, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		// Depth is cleared every pass, so it comes from UNDEFINED each frame,
+		// like the backbuffer. It was once transitioned at setup, into the
+		// upload list after that list had been closed and submitted.
+		spudgpu_cmd_image_barrier(cmd, depth_image, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
 		spudgpu_rendering_begin_desc rendering_desc = {
 		    .color_attachments = {{.image_view = backbuffer_view, .load_op = SPUDGPU_LOAD_OP_CLEAR, .store_op = SPUDGPU_STORE_OP_STORE, .clear_color = {0.0f, 0.2f, 0.4f, 1.0f}}},

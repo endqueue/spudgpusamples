@@ -68,6 +68,12 @@
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
 
+// The one viewport and scissor every draw uses: named to the bundle when it
+// is recorded, and set on the direct list each frame before it executes the
+// bundle, as spudgpu.h's bundle rules require the two to match.
+static const SPUDGPU_VIEWPORT window_viewport = {.x = 0, .y = 0, .width = WINDOW_WIDTH, .height = WINDOW_HEIGHT, .minDepth = 0.0f, .maxDepth = 1.0f};
+static const SPUDGPU_SCISSOR_RECT window_scissor = {.x = 0, .y = 0, .width = WINDOW_WIDTH, .height = WINDOW_HEIGHT};
+
 // Matches the original D3D12Bundles' CityRowCount/CityColumnCount exactly.
 #define CITY_ROW_COUNT 10
 #define CITY_COLUMN_COUNT 3
@@ -320,7 +326,8 @@ static spudgpu_shader_module load_shader_module(
 // calling command list and error on RSSetViewports/RSSetScissorRects
 // (EXECUTION ERROR #546: INVALID_BUNDLE_API); the caller sets them on cmd
 // once per frame instead, before either executing the bundle or calling
-// this function directly.
+// this function directly. A Vulkan secondary buffer inherits neither, so
+// the bundle is also given them in its spudgpu_bundle_inheritance_desc.
 static void record_city_draws(
     spudgpu_command_list target,
     spudgpu_shader_pipeline pipeline,
@@ -339,7 +346,22 @@ static void record_city_draws(
 	}
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+	// --frames N: render N frames, then leave the loop as closing the window
+	// does, through the same cleanup. Without it the sample runs until the
+	// window is closed.
+	// --device N: use the Nth device spudgpu_enumerate_devices lists. 0 if
+	// not given.
+	uint64_t frame_limit  = 0;
+	uint32_t device_index = 0;
+	for (int i = 1; i + 1 < argc; ++i) {
+		if (strcmp(argv[i], "--frames") == 0)
+			frame_limit = strtoull(argv[i + 1], NULL, 10);
+		else if (strcmp(argv[i], "--device") == 0)
+			device_index = (uint32_t)strtoul(argv[i + 1], NULL, 10);
+	}
+	uint64_t frames_run = 0;
+
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
 		return 1;
@@ -363,7 +385,11 @@ int main(void) {
 		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
 		return 1;
 	}
-	spudgpu_device device = devices[0];
+	if (device_index >= device_count) {
+		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
+		return 1;
+	}
+	spudgpu_device device = devices[device_index];
 
 	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
 	spudgpu_get_device_properties(device, &device_properties);
@@ -524,7 +550,8 @@ int main(void) {
 	    .depth_test_enable      = true,
 	    .depth_write_enable     = true,
 	    .depth_compare_op       = SPUDGPU_COMPARE_OP_LESS,
-	    .color_attachment_format = SPUDGPU_FORMAT_B8G8R8A8_UNORM,
+	    .color_attachment_formats = {SPUDGPU_FORMAT_B8G8R8A8_UNORM},
+	    .color_attachment_count  = 1,
 	    .depth_format            = SPUDGPU_FORMAT_D32_FLOAT,
 	    .descriptor_set_layouts      = {cbv_layout},
 	    .descriptor_set_layout_count = 1,
@@ -588,8 +615,11 @@ int main(void) {
 	}
 
 	spudgpu_bundle_inheritance_desc bundle_inheritance = {
-	    .color_attachment_format = SPUDGPU_FORMAT_B8G8R8A8_UNORM,
+	    .color_attachment_formats = {SPUDGPU_FORMAT_B8G8R8A8_UNORM},
+	    .color_attachment_count  = 1,
 	    .depth_format            = SPUDGPU_FORMAT_D32_FLOAT,
+	    .viewport                = window_viewport,
+	    .scissor_rect            = window_scissor,
 	};
 	spudgpu_begin_bundle_command_list(bundle, &bundle_inheritance);
 	record_city_draws(bundle, pipeline, vertex_buffer_view, index_buffer_view, index_count, object_sets);
@@ -609,6 +639,9 @@ int main(void) {
 	bool use_bundles = true;
 
 	while (running) {
+		if (frame_limit != 0 && frames_run == frame_limit)
+			break;
+		++frames_run;
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_EVENT_QUIT)
@@ -673,12 +706,10 @@ int main(void) {
 		spudgpu_cmd_begin_rendering(cmd, &rendering_desc);
 
 		// Viewport/scissor are set here, on the direct list, every frame --
-		// a bundle can't set its own (see record_city_draws above), and it
-		// inherits whatever's already bound on cmd when ExecuteBundle runs.
-		SPUDGPU_VIEWPORT viewport = {.x = 0, .y = 0, .width = WINDOW_WIDTH, .height = WINDOW_HEIGHT, .minDepth = 0.0f, .maxDepth = 1.0f};
-		spudgpu_cmd_set_viewports(cmd, 0, 1, &viewport);
-		SPUDGPU_SCISSOR_RECT scissor = {.x = 0, .y = 0, .width = WINDOW_WIDTH, .height = WINDOW_HEIGHT};
-		spudgpu_cmd_set_scissor_rects(cmd, 0, 1, &scissor);
+		// a bundle can't set its own (see record_city_draws above). They are
+		// the same two the bundle was given when it was recorded.
+		spudgpu_cmd_set_viewports(cmd, 0, 1, &window_viewport);
+		spudgpu_cmd_set_scissor_rects(cmd, 0, 1, &window_scissor);
 
 		if (use_bundles) {
 			// ExecuteBundle requires the direct list's descriptor heaps to

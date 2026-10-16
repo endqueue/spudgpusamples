@@ -127,7 +127,22 @@ static spudgpu_shader_module load_shader_module(
 	return module;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+	// --frames N: render N frames, then leave the loop as closing the window
+	// does, through the same cleanup. Without it the sample runs until the
+	// window is closed.
+	// --device N: use the Nth device spudgpu_enumerate_devices lists. 0 if
+	// not given.
+	uint64_t frame_limit  = 0;
+	uint32_t device_index = 0;
+	for (int i = 1; i + 1 < argc; ++i) {
+		if (strcmp(argv[i], "--frames") == 0)
+			frame_limit = strtoull(argv[i + 1], NULL, 10);
+		else if (strcmp(argv[i], "--device") == 0)
+			device_index = (uint32_t)strtoul(argv[i + 1], NULL, 10);
+	}
+	uint64_t frames_run = 0;
+
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
 		return 1;
@@ -151,7 +166,11 @@ int main(void) {
 		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
 		return 1;
 	}
-	spudgpu_device device = devices[0];
+	if (device_index >= device_count) {
+		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
+		return 1;
+	}
+	spudgpu_device device = devices[device_index];
 
 	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
 	spudgpu_get_device_properties(device, &device_properties);
@@ -463,7 +482,8 @@ int main(void) {
 	    .primitive_topology          = SPUDGPU_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
 	    .cull_mode                   = SPUDGPU_CULL_MODE_NONE,
 	    .front_face_ccw              = true,
-	    .color_attachment_format     = SPUDGPU_FORMAT_B8G8R8A8_UNORM,
+	    .color_attachment_formats    = {SPUDGPU_FORMAT_B8G8R8A8_UNORM},
+	    .color_attachment_count      = 1,
 	    .depth_format                = SPUDGPU_FORMAT_UNKNOWN,
 	    .descriptor_set_layouts      = {graphics_set_layout},
 	    .descriptor_set_layout_count = 1,
@@ -495,6 +515,9 @@ int main(void) {
 	bool running        = true;
 	bool enable_culling = true;
 	while (running) {
+		if (frame_limit != 0 && frames_run == frame_limit)
+			break;
+		++frames_run;
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_EVENT_QUIT)
@@ -558,10 +581,18 @@ int main(void) {
 
 		spudgpu_buffer_view graphics_vertex_buffer_views[2] = {vertex_buffer_view, scene_buffer_view};
 		spudgpu_cmd_set_vertex_buffers(cmd, 0, 2, graphics_vertex_buffer_views);
-		spudgpu_cmd_draw_indirect(
-		    cmd,
-		    enable_culling ? output_commands_buffer : input_commands_buffer,
-		    0, TRIANGLE_COUNT, sizeof(IndirectCommand));
+		// One call where the device takes TRIANGLE_COUNT draws in one (D3D12,
+		// Metal, Vulkan with multiDrawIndirect), else as many calls as its
+		// max_draw_indirect_count needs, at advancing offsets.
+		for (uint32_t first = 0; first < TRIANGLE_COUNT;) {
+			uint32_t left  = TRIANGLE_COUNT - first;
+			uint32_t count = left < device_properties.max_draw_indirect_count ? left : device_properties.max_draw_indirect_count;
+			spudgpu_cmd_draw_indirect(
+			    cmd,
+			    enable_culling ? output_commands_buffer : input_commands_buffer,
+			    (uint64_t)first * sizeof(IndirectCommand), count, sizeof(IndirectCommand));
+			first += count;
+		}
 
 		spudgpu_cmd_end_rendering(cmd);
 		spudgpu_cmd_image_barrier_view(cmd, backbuffer_view, SPUDGPU_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, SPUDGPU_IMAGE_LAYOUT_PRESENT_SRC);

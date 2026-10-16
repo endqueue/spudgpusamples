@@ -307,3 +307,64 @@ bindless descriptor indexing, and `SpudGPUBundles`, which needs
 `spudgpu_depth_bounds_capabilities::supported` will be `false` on anything
 short of `MTLGPUFamilyApple10` hardware, so the animated bounds window has
 no visible effect on most Metal devices today even though the sample runs.
+
+## Running
+
+Every sample takes two optional arguments:
+
+- `--frames N`: render N frames, then leave the render loop as closing the
+  window does, through the same cleanup. Without it a sample runs until its
+  window is closed. Use it to run a sample unattended, under a validation
+  layer or a debugger.
+- `--device N`: use the Nth device `spudgpu_enumerate_devices` lists (0 if
+  not given).
+
+## Validation run, 2026-10-16
+
+On Windows 11, Debug, with the `windows-vulkan` preset and
+`VK_LAYER_KHRONOS_validation`, `--frames 300`, on both devices of one
+laptop (Intel Iris Xe, `--device 0`; NVIDIA RTX A2000, `--device 1`), every
+sample exits cleanly with no validation message. `SpudGPUMeshShaders` exits 1
+on the Intel device, by design: that driver reports no mesh shading.
+
+Before that run the samples no longer compiled: SpudGPU had replaced
+`color_attachment_format` with `color_attachment_formats[]` and
+`color_attachment_count`. Once built, the run found:
+
+- `SpudGPUBundles`: SpudGPU's header said a bundle inherits the direct
+  list's viewport and scissor, which a Vulkan secondary command buffer does
+  not; the Intel driver crashed on the bundle's first draw. A bundle is now
+  given its viewport and scissor in `spudgpu_bundle_inheritance_desc`, and
+  `spudgpu.h` states the bundle rules for every backend.
+- `SpudGPUDynamicIndexing`: the depth image's transition was recorded into
+  the upload list after it had been closed and submitted, so the depth image
+  was never transitioned, and the NVIDIA driver crashed recording into the
+  finished list. The transition is now recorded each frame.
+- `SpudGPUExecuteIndirect`: SpudGPU's Vulkan device never enabled
+  `multiDrawIndirect`, so a 256-draw indirect call was invalid. It is enabled
+  where reported, and `SPUDGPU_DEVICE_PROPERTIES::max_draw_indirect_count`
+  says how many draws one call takes; the sample splits its call by it.
+- `SpudGPUMeshShaders`: SpudGPU's Vulkan `spudgpu_cmd_push_constants` knew
+  only vertex, fragment and compute stages and dropped a mesh-stage push.
+  With that fixed, the sample read freed memory every frame (its meshlet
+  subsets pointed into the file buffer it had freed); they are now copied.
+
+The same day, with the `windows-d3d12` preset (Debug) under cdb, every
+sample runs 300 frames with no D3D12 debug layer message on both devices:
+the Iris Xe (`--device 0`) and the NVIDIA RTX A2000 (`--device 1`).
+`SpudGPUMeshShaders` exits 1 on the Iris Xe, which has no mesh shading. The
+Iris Xe was listed on D3D12 only after SpudGPU's D3D12 backend stopped
+requiring feature level 12_2 (it now requires 12_0); before that, D3D12
+listed the NVIDIA device alone, as device 0. Two samples failed there
+first, both from SpudGPU's D3D12 backend:
+
+- `SpudGPUMeshShaders`: `CreateGraphicsPipelineState` failed, the root
+  signature not covering the shader's `t3`. SPIRV-Cross declared the GLSL
+  `readonly` storage buffers as SRVs, while the backend's root signature and
+  descriptors make every storage buffer a UAV; it now compiles them as UAVs.
+- `SpudGPUDynamicIndexing`, and `SpudGPUMeshShaders` once its pipeline was
+  made: two errors on every draw, a bound table in a descriptor heap that
+  was no longer set. Each descriptor pool, and the bindless state, had its
+  own shader-visible heaps, and D3D12 sets one CBV/SRV/UAV heap and one
+  sampler heap at a time, so binding a set from a second pool unbound the
+  first's. They now all take ranges of the device's two heaps.

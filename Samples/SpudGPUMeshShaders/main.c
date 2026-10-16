@@ -368,7 +368,22 @@ static spudgpu_buffer create_storage_buffer_with_data(
 	return buffer;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+	// --frames N: render N frames, then leave the loop as closing the window
+	// does, through the same cleanup. Without it the sample runs until the
+	// window is closed.
+	// --device N: use the Nth device spudgpu_enumerate_devices lists. 0 if
+	// not given.
+	uint64_t frame_limit  = 0;
+	uint32_t device_index = 0;
+	for (int i = 1; i + 1 < argc; ++i) {
+		if (strcmp(argv[i], "--frames") == 0)
+			frame_limit = strtoull(argv[i + 1], NULL, 10);
+		else if (strcmp(argv[i], "--device") == 0)
+			device_index = (uint32_t)strtoul(argv[i + 1], NULL, 10);
+	}
+	uint64_t frames_run = 0;
+
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
 		return 1;
@@ -392,7 +407,11 @@ int main(void) {
 		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
 		return 1;
 	}
-	spudgpu_device device = devices[0];
+	if (device_index >= device_count) {
+		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
+		return 1;
+	}
+	spudgpu_device device = devices[device_index];
 
 	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
 	spudgpu_get_device_properties(device, &device_properties);
@@ -485,8 +504,16 @@ int main(void) {
 	// index_bytes and corrupting every 16-bit-packed vertex-index lookup.
 	uint32_t index_bytes = accessors[mesh->indices].size;
 
+	// Copied out of the file: the render loop reads them every frame, and
+	// file_data is freed below. They once pointed into it, and the loop read
+	// freed memory.
 	uint32_t meshlet_subset_count = meshlet_subset_size / sizeof(Subset);
-	const Subset *meshlet_subsets = (const Subset *) (blob + meshlet_subset_offset);
+	Subset *meshlet_subsets       = (Subset *) malloc(meshlet_subset_size);
+	if (!meshlet_subsets) {
+		fprintf(stderr, "Out of memory copying the meshlet subsets\n");
+		return 1;
+	}
+	memcpy(meshlet_subsets, blob + meshlet_subset_offset, meshlet_subset_size);
 
 	spudgpu_buffer vertices_buffer      = create_storage_buffer_with_data(device, cmd, graphics_queue, blob + vtx_offset, vtx_size);
 	spudgpu_buffer meshlets_buffer      = create_storage_buffer_with_data(device, cmd, graphics_queue, blob + meshlet_offset, meshlet_size);
@@ -583,7 +610,8 @@ int main(void) {
 	    .depth_test_enable  = true,
 	    .depth_write_enable = true,
 	    .depth_compare_op   = SPUDGPU_COMPARE_OP_LESS,
-	    .color_attachment_format = SPUDGPU_FORMAT_B8G8R8A8_UNORM,
+	    .color_attachment_formats = {SPUDGPU_FORMAT_B8G8R8A8_UNORM},
+	    .color_attachment_count  = 1,
 	    .depth_format            = SPUDGPU_FORMAT_D32_FLOAT,
 	    .descriptor_set_layouts      = {mesh_data_layout, globals_layout},
 	    .descriptor_set_layout_count = 2,
@@ -655,6 +683,9 @@ int main(void) {
 
 	bool running = true;
 	while (running) {
+		if (frame_limit != 0 && frames_run == frame_limit)
+			break;
+		++frames_run;
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_EVENT_QUIT)
@@ -741,6 +772,7 @@ int main(void) {
 	spudgpu_destroy_shader_pipeline(pipeline);
 	spudgpu_destroy_shader_module(fragment_module);
 	spudgpu_destroy_shader_module(mesh_module);
+	free(meshlet_subsets);
 	spudgpu_unmap_buffer(globals_buffer);
 	spudgpu_destroy_buffer(globals_buffer);
 	spudgpu_destroy_descriptor_pool(globals_pool);
