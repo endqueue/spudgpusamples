@@ -109,6 +109,7 @@ static spudgpu_shader_module load_shader_module(
 		return NULL;
 
 	spudgpu_shader_module_desc desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_MODULE_DESC, NULL},
 	    .stage      = stage,
 	    .spirv_code = code,
 	    .spirv_size = code_size,
@@ -150,6 +151,7 @@ static uint64_t heap_size_for(uint64_t bytes) {
 }
 
 static const spudgpu_image_desc texture_desc = {
+    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_DESC, NULL},
     .usage        = SPUDGPU_IMAGE_USAGE_SAMPLED | SPUDGPU_IMAGE_USAGE_TRANSFER_DST,
     .type         = SPUDGPU_IMAGE_TYPE_2D,
     .format       = SPUDGPU_FORMAT_R8G8B8A8_UNORM,
@@ -183,6 +185,7 @@ static bool create_textures(spudgpu_device device, bool placed, Textures *out) {
 		// class first. The answer is the same for every heap of that kind
 		// and class on a device.
 		spudgpu_heap_desc probe_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_HEAP_DESC, NULL},
 		    .memory_kind    = SPUDGPU_MEMORY_KIND_DEVICE,
 		    .resource_class = SPUDGPU_HEAP_RESOURCE_CLASS_IMAGES,
 		    .size           = SPUDGPU_HEAP_SIZE_GRANULARITY,
@@ -190,6 +193,7 @@ static bool create_textures(spudgpu_device device, bool placed, Textures *out) {
 		spudgpu_heap probe = NULL;
 		if (!check(spudgpu_create_heap(device, &probe_desc, &probe), "spudgpu_create_heap (probe)"))
 			return false;
+		out->requirements.base = (SPUD_STRUCT_BASE_OUT) {SPUD_STRUCT_TYPE_GPU_PLACEMENT_REQUIREMENTS, NULL};
 		bool probed = check(spudgpu_get_image_placement_requirements(probe, &texture_desc, &out->requirements),
 		                    "spudgpu_get_image_placement_requirements");
 		spudgpu_destroy_heap(probe);
@@ -200,6 +204,7 @@ static bool create_textures(spudgpu_device device, bool placed, Textures *out) {
 		// alignment allows.
 		out->stride = align_up(out->requirements.size, out->requirements.alignment);
 		spudgpu_heap_desc heap_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_HEAP_DESC, NULL},
 		    .memory_kind    = SPUDGPU_MEMORY_KIND_DEVICE,
 		    .resource_class = SPUDGPU_HEAP_RESOURCE_CLASS_IMAGES,
 		    .size           = heap_size_for(out->stride * TEXTURE_COUNT),
@@ -219,6 +224,7 @@ static bool create_textures(spudgpu_device device, bool placed, Textures *out) {
 
 	for (uint32_t n = 0; n < TEXTURE_COUNT; n++) {
 		spudgpu_image_view_desc view_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_VIEW_DESC, NULL},
 		    .parent_image      = out->images[n],
 		    .type              = SPUDGPU_IMAGE_VIEW_TYPE_2D,
 		    .subresource_range = {.aspect_mask = SPUDGPU_IMAGE_ASPECT_COLOR, .base_mip_level = 0, .mip_level_count = 1, .base_array_layer = 0, .array_layer_count = 1},
@@ -273,8 +279,8 @@ static void write_texture_sets(spudgpu_device device, const Textures *textures, 
 		    .image_layout = SPUDGPU_IMAGE_LAYOUT_SHADER_READ_ONLY,
 		};
 		spudgpu_write_descriptor_set writes[2] = {
-		    {.dst_set = sets[n], .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .image_info = &image_info},
-		    {.dst_set = sets[n], .dst_binding = 1, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLER, .sampler = sampler},
+		    {.base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL}, .dst_set = sets[n], .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .image_info = &image_info},
+		    {.base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL}, .dst_set = sets[n], .dst_binding = 1, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLER, .sampler = sampler},
 		};
 		spudgpu_update_descriptor_sets(device, writes, 2);
 	}
@@ -362,7 +368,7 @@ int main(int argc, char **argv) {
 	}
 	spudgpu_device device = devices[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
+	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
 	spudgpu_get_device_properties(device, &device_properties);
 	printf("Using device: %s (mappable heaps: %s)\n", device_properties.description,
 	       device_properties.mappable_heaps ? "yes" : "no");
@@ -376,6 +382,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_swap_chain_desc swap_chain_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SWAP_CHAIN_DESC, NULL},
 	    .surface = surface,
 	    .queue   = graphics_queue,
 	    .width   = WINDOW_WIDTH,
@@ -393,7 +400,7 @@ int main(int argc, char **argv) {
 	if (!check(spudgpu_create_swap_chain(device, &swap_chain_desc, &swap_chain), "spudgpu_create_swap_chain"))
 		goto cleanup;
 
-	spudgpu_command_allocator_desc allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
+	spudgpu_command_allocator_desc allocator_desc = {.base = {SPUD_STRUCT_TYPE_GPU_COMMAND_ALLOCATOR_DESC, NULL}, .type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
 	if (!check(spudgpu_create_command_allocator(device, &allocator_desc, &command_allocator), "spudgpu_create_command_allocator"))
 		goto cleanup;
 
@@ -458,12 +465,14 @@ int main(int argc, char **argv) {
 	// ------------------------------------------------------------------
 
 	const spudgpu_buffer_desc staging_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage       = SPUDGPU_BUFFER_USAGE_TRANSFER_SRC,
 	    .memory_kind = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size        = staging_size,
 	};
 	if (device_properties.mappable_heaps) {
 		spudgpu_heap_desc probe_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_HEAP_DESC, NULL},
 		    .memory_kind    = SPUDGPU_MEMORY_KIND_UPLOAD,
 		    .resource_class = SPUDGPU_HEAP_RESOURCE_CLASS_BUFFERS,
 		    .size           = SPUDGPU_HEAP_SIZE_GRANULARITY,
@@ -471,7 +480,7 @@ int main(int argc, char **argv) {
 		spudgpu_heap probe = NULL;
 		if (!check(spudgpu_create_heap(device, &probe_desc, &probe), "spudgpu_create_heap (upload probe)"))
 			goto cleanup;
-		spudgpu_placement_requirements staging_requirements;
+		spudgpu_placement_requirements staging_requirements = {.base = {SPUD_STRUCT_TYPE_GPU_PLACEMENT_REQUIREMENTS, NULL}};
 		bool probed = check(spudgpu_get_buffer_placement_requirements(probe, &staging_desc, &staging_requirements),
 		                    "spudgpu_get_buffer_placement_requirements (staging)");
 		spudgpu_destroy_heap(probe);
@@ -514,19 +523,21 @@ int main(int argc, char **argv) {
 	}
 
 	const spudgpu_buffer_desc vertex_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage       = SPUDGPU_BUFFER_USAGE_VERTEX | SPUDGPU_BUFFER_USAGE_TRANSFER_DST,
 	    .memory_kind = SPUDGPU_MEMORY_KIND_DEVICE,
 	    .size        = sizeof(quad_vertices),
 	};
 	{
 		spudgpu_heap_desc heap_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_HEAP_DESC, NULL},
 		    .memory_kind    = SPUDGPU_MEMORY_KIND_DEVICE,
 		    .resource_class = SPUDGPU_HEAP_RESOURCE_CLASS_BUFFERS,
 		    .size           = SPUDGPU_HEAP_SIZE_GRANULARITY,
 		};
 		if (!check(spudgpu_create_heap(device, &heap_desc, &vertex_heap), "spudgpu_create_heap (vertices)"))
 			goto cleanup;
-		spudgpu_placement_requirements vertex_requirements;
+		spudgpu_placement_requirements vertex_requirements = {.base = {SPUD_STRUCT_TYPE_GPU_PLACEMENT_REQUIREMENTS, NULL}};
 		if (!check(spudgpu_get_buffer_placement_requirements(vertex_heap, &vertex_buffer_desc, &vertex_requirements),
 		           "spudgpu_get_buffer_placement_requirements (vertices)"))
 			goto cleanup;
@@ -542,6 +553,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_buffer_view_desc vertex_buffer_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_VIEW_DESC, NULL},
 	    .parent_buffer             = vertex_buffer,
 	    .offset_from_parent_buffer = 0,
 	    .stride                    = sizeof(Vertex),
@@ -556,10 +568,10 @@ int main(int argc, char **argv) {
 
 	spudgpu_begin_command_list(cmd);
 	{
-		spudgpu_buffer_barrier to_copy = {.buffer = vertex_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_COPY_DEST};
+		spudgpu_buffer_barrier to_copy = {.base = {SPUD_STRUCT_TYPE_GPU_BUFFER_BARRIER, NULL}, .buffer = vertex_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_COPY_DEST};
 		spudgpu_cmd_pipeline_barrier(cmd, &to_copy, 1, NULL, 0);
 		spudgpu_cmd_copy_buffer(cmd, staging, vertex_buffer, 0, 0, sizeof(quad_vertices));
-		spudgpu_buffer_barrier to_vertex = {.buffer = vertex_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COPY_DEST, .state_after = SPUDGPU_RESOURCE_STATE_VERTEX_BUFFER};
+		spudgpu_buffer_barrier to_vertex = {.base = {SPUD_STRUCT_TYPE_GPU_BUFFER_BARRIER, NULL}, .buffer = vertex_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COPY_DEST, .state_after = SPUDGPU_RESOURCE_STATE_VERTEX_BUFFER};
 		spudgpu_cmd_pipeline_barrier(cmd, &to_vertex, 1, NULL, 0);
 	}
 	record_texture_upload(cmd, &textures, staging, texture_offsets, row_pitch);
@@ -572,6 +584,7 @@ int main(int argc, char **argv) {
 	// ------------------------------------------------------------------
 
 	spudgpu_sampler_desc sampler_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SAMPLER_DESC, NULL},
 	    .mag_filter     = SPUDGPU_FILTER_LINEAR,
 	    .min_filter     = SPUDGPU_FILTER_LINEAR,
 	    .mipmap_filter  = SPUDGPU_FILTER_LINEAR,
@@ -585,6 +598,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_descriptor_set_layout_desc set_layout_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_LAYOUT_DESC, NULL},
 	    .bindings = {
 	        {.binding = 0, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_FRAGMENT},
 	        {.binding = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_FRAGMENT},
@@ -595,6 +609,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_descriptor_pool_desc pool_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_POOL_DESC, NULL},
 	    .max_sets   = TEXTURE_COUNT,
 	    .pool_sizes = {
 	        {.descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .count = TEXTURE_COUNT},
@@ -608,6 +623,7 @@ int main(int argc, char **argv) {
 	spudgpu_descriptor_set texture_sets[TEXTURE_COUNT];
 	for (uint32_t n = 0; n < TEXTURE_COUNT; n++) {
 		spudgpu_descriptor_set_desc set_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_DESC, NULL},
 		    .pool        = descriptor_pool,
 		    .set_layouts = {set_layout},
 		    .set_count   = 1,
@@ -624,6 +640,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_shader_pipeline_desc pipeline_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_PIPELINE_DESC, NULL},
 	    .vertex_module     = vertex_module,
 	    .fragment_module   = fragment_module,
 	    .vertex_attributes = {
@@ -691,6 +708,7 @@ int main(int argc, char **argv) {
 		spudgpu_cmd_image_barrier_view(cmd, backbuffer_view, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		spudgpu_rendering_begin_desc rendering_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_RENDERING_BEGIN_DESC, NULL},
 		    .color_attachments = {
 		        {
 		            .image_view  = backbuffer_view,

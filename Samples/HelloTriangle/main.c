@@ -54,6 +54,7 @@ static spudgpu_shader_module load_shader_module(
 		return NULL;
 
 	spudgpu_shader_module_desc desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_MODULE_DESC, NULL},
 	    .stage      = stage,
 	    .spirv_code = code,
 	    .spirv_size = code_size,
@@ -128,7 +129,7 @@ int main(int argc, char **argv) {
 	}
 	spudgpu_device device = devices[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
+	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
 	spudgpu_get_device_properties(device, &device_properties);
 	printf("Using device: %s\n", device_properties.description);
 
@@ -141,6 +142,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_swap_chain_desc swap_chain_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SWAP_CHAIN_DESC, NULL},
 	    .surface         = surface,
 	    .queue           = graphics_queue,
 	    .width           = WINDOW_WIDTH,
@@ -171,6 +173,7 @@ int main(int argc, char **argv) {
 	};
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(vertices),
@@ -187,6 +190,7 @@ int main(int argc, char **argv) {
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_buffer_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_VIEW_DESC, NULL},
 	    .parent_buffer             = vertex_buffer,
 	    .offset_from_parent_buffer = 0,
 	    .stride                    = sizeof(Vertex),
@@ -200,6 +204,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_shader_pipeline_desc pipeline_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_PIPELINE_DESC, NULL},
 	    .vertex_module   = vertex_module,
 	    .fragment_module = fragment_module,
 	    .vertex_attributes = {
@@ -223,7 +228,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	spudgpu_command_allocator_desc allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
+	spudgpu_command_allocator_desc allocator_desc = {.base = {SPUD_STRUCT_TYPE_GPU_COMMAND_ALLOCATOR_DESC, NULL}, .type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
 	spudgpu_create_command_allocator(device, &allocator_desc, &command_allocator);
 
 	spudgpu_create_command_list(command_allocator, &cmd);
@@ -248,6 +253,7 @@ int main(int argc, char **argv) {
 		spudgpu_cmd_image_barrier_view(cmd, backbuffer_view, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		spudgpu_rendering_begin_desc rendering_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_RENDERING_BEGIN_DESC, NULL},
 		    .color_attachments = {
 		        {
 		            .image_view = backbuffer_view,

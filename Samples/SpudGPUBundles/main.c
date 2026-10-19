@@ -311,6 +311,7 @@ static spudgpu_shader_module load_shader_module(
 		return NULL;
 
 	spudgpu_shader_module_desc desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_MODULE_DESC, NULL},
 	    .stage      = stage,
 	    .spirv_code = code,
 	    .spirv_size = code_size,
@@ -424,7 +425,7 @@ int main(int argc, char **argv) {
 	}
 	spudgpu_device device = devices[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
+	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
 	spudgpu_get_device_properties(device, &device_properties);
 	printf("Using device: %s\n", device_properties.description);
 
@@ -437,6 +438,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_swap_chain_desc swap_chain_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SWAP_CHAIN_DESC, NULL},
 	    .surface         = surface,
 	    .queue           = graphics_queue,
 	    .width           = WINDOW_WIDTH,
@@ -451,7 +453,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	spudgpu_command_allocator_desc direct_allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
+	spudgpu_command_allocator_desc direct_allocator_desc = {.base = {SPUD_STRUCT_TYPE_GPU_COMMAND_ALLOCATOR_DESC, NULL}, .type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
 	spudgpu_create_command_allocator(device, &direct_allocator_desc, &command_allocator);
 
 	spudgpu_create_command_list(command_allocator, &cmd);
@@ -466,6 +468,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = VERTEX_DATA_SIZE,
@@ -478,10 +481,12 @@ int main(int argc, char **argv) {
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_VIEW_DESC, NULL},
 	    .parent_buffer = vertex_buffer, .offset_from_parent_buffer = 0, .stride = VERTEX_STRIDE, .size = VERTEX_DATA_SIZE};
 	spudgpu_create_buffer_view(vertex_buffer, &vertex_view_desc, &vertex_buffer_view);
 
 	spudgpu_buffer_desc index_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_INDEX,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = INDEX_DATA_SIZE,
@@ -495,6 +500,7 @@ int main(int argc, char **argv) {
 	free(mesh_data);
 
 	spudgpu_buffer_view_desc index_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_VIEW_DESC, NULL},
 	    .parent_buffer = index_buffer, .offset_from_parent_buffer = 0, .stride = 4, .size = INDEX_DATA_SIZE};
 	spudgpu_create_buffer_view(index_buffer, &index_view_desc, &index_buffer_view);
 
@@ -505,17 +511,20 @@ int main(int argc, char **argv) {
 	// ------------------------------------------------------------------
 
 	spudgpu_descriptor_set_layout_desc cbv_layout_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_LAYOUT_DESC, NULL},
 	    .bindings      = {{.binding = 0, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_VERTEX}},
 	    .binding_count = 1,
 	};
 	spudgpu_create_descriptor_set_layout(device, &cbv_layout_desc, &cbv_layout);
 
 	spudgpu_descriptor_pool_desc cbv_pool_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_POOL_DESC, NULL},
 	    .max_sets = CITY_OBJECT_COUNT, .pool_sizes = {{.descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = CITY_OBJECT_COUNT}}, .pool_size_count = 1};
 	spudgpu_create_descriptor_pool(device, &cbv_pool_desc, &cbv_pool);
 
 	const uint32_t cbv_stride = 256; // D3D12 CBV alignment; harmless elsewhere.
 	spudgpu_buffer_desc cbv_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = (uint64_t) cbv_stride * CITY_OBJECT_COUNT,
@@ -532,11 +541,12 @@ int main(int argc, char **argv) {
 
 			mat4_translation(col * CITY_SPACING_INTERVAL, 0.0f, -(float) row * CITY_SPACING_INTERVAL, model_matrices[i]);
 
-			spudgpu_descriptor_set_desc set_desc = {.pool = cbv_pool, .set_layouts = {cbv_layout}, .set_count = 1};
+			spudgpu_descriptor_set_desc set_desc = {.base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_DESC, NULL}, .pool = cbv_pool, .set_layouts = {cbv_layout}, .set_count = 1};
 			spudgpu_create_descriptor_sets(device, &set_desc, &object_sets[i]);
 
 			spudgpu_descriptor_buffer_info buf_info = {.buffer = cbv_buffer, .offset = (uint64_t) i * cbv_stride, .range = sizeof(ObjectCB)};
 			spudgpu_write_descriptor_set write = {
+			    .base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL},
 			    .dst_set = object_sets[i], .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .buffer_info = &buf_info};
 			spudgpu_update_descriptor_sets(device, &write, 1);
 
@@ -562,6 +572,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_shader_pipeline_desc pipeline_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_PIPELINE_DESC, NULL},
 	    .vertex_module   = vertex_module,
 	    .fragment_module = fragment_module,
 	    .vertex_attributes = {
@@ -589,6 +600,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_image_desc depth_image_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_DESC, NULL},
 	    .usage        = SPUDGPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
 	    .format       = SPUDGPU_FORMAT_D32_FLOAT,
@@ -604,6 +616,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 	spudgpu_image_view_desc depth_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_VIEW_DESC, NULL},
 	    .parent_image = depth_image,
 	    .type         = SPUDGPU_IMAGE_VIEW_TYPE_2D,
 	    .subresource_range = {.aspect_mask = SPUDGPU_ASPECT_DEPTH_BIT, .base_mip_level = 0, .mip_level_count = 1, .base_array_layer = 0, .array_layer_count = 1},
@@ -626,7 +639,7 @@ int main(int argc, char **argv) {
 	// front. Never re-recorded -- see the file comment above.
 	// ------------------------------------------------------------------
 
-	spudgpu_command_allocator_desc bundle_allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_BUNDLE};
+	spudgpu_command_allocator_desc bundle_allocator_desc = {.base = {SPUD_STRUCT_TYPE_GPU_COMMAND_ALLOCATOR_DESC, NULL}, .type = SPUDGPU_COMMAND_LIST_TYPE_BUNDLE};
 	if (SPUDFAIL(spudgpu_create_command_allocator(device, &bundle_allocator_desc, &bundle_allocator))) {
 		fprintf(stderr, "spudgpu_create_command_allocator (bundle) failed\n");
 		goto cleanup;
@@ -637,6 +650,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_bundle_inheritance_desc bundle_inheritance = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUNDLE_INHERITANCE_DESC, NULL},
 	    .color_attachment_formats = {SPUDGPU_FORMAT_B8G8R8A8_UNORM},
 	    .color_attachment_count  = 1,
 	    .depth_format            = SPUDGPU_FORMAT_D32_FLOAT,
@@ -718,6 +732,7 @@ int main(int argc, char **argv) {
 		spudgpu_cmd_image_barrier_view(cmd, backbuffer_view, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		spudgpu_rendering_begin_desc rendering_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_RENDERING_BEGIN_DESC, NULL},
 		    .color_attachments = {{.image_view = backbuffer_view, .load_op = SPUDGPU_LOAD_OP_CLEAR, .store_op = SPUDGPU_STORE_OP_STORE, .clear_color = {0.0f, 0.2f, 0.4f, 1.0f}}},
 		    .color_attachment_count = 1,
 		    .depth_attachment       = {.image_view = depth_view, .depth_load_op = SPUDGPU_LOAD_OP_CLEAR, .depth_store_op = SPUDGPU_STORE_OP_STORE, .clear_depth = 1.0f},

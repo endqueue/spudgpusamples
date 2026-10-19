@@ -329,6 +329,7 @@ static spudgpu_shader_module load_shader_module(
 		return NULL;
 
 	spudgpu_shader_module_desc desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_MODULE_DESC, NULL},
 	    .stage      = stage,
 	    .spirv_code = code,
 	    .spirv_size = code_size,
@@ -357,6 +358,7 @@ static spudgpu_image upload_rgba8_texture(
     uint32_t height,
     spudgpu_buffer *out_staging_buffer) {
 	spudgpu_image_desc image_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_DESC, NULL},
 	    .usage        = SPUDGPU_IMAGE_USAGE_SAMPLED | SPUDGPU_IMAGE_USAGE_TRANSFER_DST,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
 	    .format       = SPUDGPU_FORMAT_R8G8B8A8_UNORM,
@@ -378,6 +380,7 @@ static spudgpu_image upload_rgba8_texture(
 	if (total_size == 0) total_size = row_pitch * height;
 
 	spudgpu_buffer_desc staging_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_TRANSFER_SRC,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = total_size,
@@ -501,11 +504,11 @@ int main(int argc, char **argv) {
 	}
 	device = devices[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
+	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
 	spudgpu_get_device_properties(device, &device_properties);
 	printf("Using device: %s\n", device_properties.description);
 
-	spudgpu_bindless_capabilities bindless_caps = {0};
+	spudgpu_bindless_capabilities bindless_caps = {.base = {SPUD_STRUCT_TYPE_GPU_BINDLESS_CAPABILITIES, NULL}};
 	spudgpu_get_bindless_capabilities(device, &bindless_caps);
 	if (!bindless_caps.supported) {
 		fprintf(stderr, "This device/driver doesn't support bindless descriptor indexing\n");
@@ -521,6 +524,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_swap_chain_desc swap_chain_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SWAP_CHAIN_DESC, NULL},
 	    .surface         = surface,
 	    .queue           = graphics_queue,
 	    .width           = WINDOW_WIDTH,
@@ -535,7 +539,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	spudgpu_command_allocator_desc allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
+	spudgpu_command_allocator_desc allocator_desc = {.base = {SPUD_STRUCT_TYPE_GPU_COMMAND_ALLOCATOR_DESC, NULL}, .type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
 	spudgpu_create_command_allocator(device, &allocator_desc, &command_allocator);
 
 	spudgpu_create_command_list(command_allocator, &cmd);
@@ -550,6 +554,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_buffer_desc vertex_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_VERTEX,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = VERTEX_DATA_SIZE,
@@ -562,10 +567,12 @@ int main(int argc, char **argv) {
 	spudgpu_unmap_buffer(vertex_buffer);
 
 	spudgpu_buffer_view_desc vertex_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_VIEW_DESC, NULL},
 	    .parent_buffer = vertex_buffer, .offset_from_parent_buffer = 0, .stride = VERTEX_STRIDE, .size = VERTEX_DATA_SIZE};
 	spudgpu_create_buffer_view(vertex_buffer, &vertex_view_desc, &vertex_buffer_view);
 
 	spudgpu_buffer_desc index_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_INDEX,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = INDEX_DATA_SIZE,
@@ -578,6 +585,7 @@ int main(int argc, char **argv) {
 	spudgpu_unmap_buffer(index_buffer);
 
 	spudgpu_buffer_view_desc index_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_VIEW_DESC, NULL},
 	    .parent_buffer = index_buffer, .offset_from_parent_buffer = 0, .stride = 4, .size = INDEX_DATA_SIZE};
 	spudgpu_create_buffer_view(index_buffer, &index_view_desc, &index_buffer_view);
 
@@ -602,6 +610,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_image_view_desc diffuse_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_VIEW_DESC, NULL},
 	    .parent_image = diffuse_image,
 	    .type         = SPUDGPU_IMAGE_VIEW_TYPE_2D,
 	    .subresource_range = {.aspect_mask = 1 /* COLOR */, .base_mip_level = 0, .mip_level_count = 1, .base_array_layer = 0, .array_layer_count = 1},
@@ -635,6 +644,7 @@ int main(int argc, char **argv) {
 		}
 
 		spudgpu_image_view_desc mat_view_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_VIEW_DESC, NULL},
 		    .parent_image = material_images[i],
 		    .type         = SPUDGPU_IMAGE_VIEW_TYPE_2D,
 		    .subresource_range = {.aspect_mask = 1, .base_mip_level = 0, .mip_level_count = 1, .base_array_layer = 0, .array_layer_count = 1},
@@ -652,6 +662,7 @@ int main(int argc, char **argv) {
 	staging_buffer_count = 0;
 
 	spudgpu_sampler_desc sampler_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SAMPLER_DESC, NULL},
 	    .mag_filter      = SPUDGPU_FILTER_LINEAR,
 	    .min_filter      = SPUDGPU_FILTER_LINEAR,
 	    .mipmap_filter   = SPUDGPU_FILTER_LINEAR,
@@ -673,35 +684,41 @@ int main(int argc, char **argv) {
 	spudgpu_descriptor_set_layout bindless_layout = spudgpu_get_bindless_descriptor_set_layout(device);
 
 	spudgpu_descriptor_set_layout_desc sampler_layout_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_LAYOUT_DESC, NULL},
 	    .bindings      = {{.binding = 0, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_FRAGMENT}},
 	    .binding_count = 1,
 	};
 	spudgpu_create_descriptor_set_layout(device, &sampler_layout_desc, &sampler_layout);
 
 	spudgpu_descriptor_pool_desc sampler_pool_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_POOL_DESC, NULL},
 	    .max_sets = 1, .pool_sizes = {{.descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLER, .count = 1}}, .pool_size_count = 1};
 	spudgpu_create_descriptor_pool(device, &sampler_pool_desc, &sampler_pool);
 
-	spudgpu_descriptor_set_desc sampler_set_desc = {.pool = sampler_pool, .set_layouts = {sampler_layout}, .set_count = 1};
+	spudgpu_descriptor_set_desc sampler_set_desc = {.base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_DESC, NULL}, .pool = sampler_pool, .set_layouts = {sampler_layout}, .set_count = 1};
 	spudgpu_descriptor_set sampler_set = NULL;
 	spudgpu_create_descriptor_sets(device, &sampler_set_desc, &sampler_set);
 
 	spudgpu_write_descriptor_set sampler_write = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL},
 	    .dst_set = sampler_set, .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_SAMPLER, .sampler = sampler};
 	spudgpu_update_descriptor_sets(device, &sampler_write, 1);
 
 	spudgpu_descriptor_set_layout_desc cbv_layout_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_LAYOUT_DESC, NULL},
 	    .bindings      = {{.binding = 0, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_VERTEX}},
 	    .binding_count = 1,
 	};
 	spudgpu_create_descriptor_set_layout(device, &cbv_layout_desc, &cbv_layout);
 
 	spudgpu_descriptor_pool_desc cbv_pool_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_POOL_DESC, NULL},
 	    .max_sets = CITY_MATERIAL_COUNT, .pool_sizes = {{.descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = CITY_MATERIAL_COUNT}}, .pool_size_count = 1};
 	spudgpu_create_descriptor_pool(device, &cbv_pool_desc, &cbv_pool);
 
 	const uint32_t cbv_stride = 256; // D3D12 CBV alignment; harmless elsewhere.
 	spudgpu_buffer_desc cbv_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = (uint64_t) cbv_stride * CITY_MATERIAL_COUNT,
@@ -718,11 +735,12 @@ int main(int argc, char **argv) {
 
 			mat4_translation(col * CITY_SPACING_INTERVAL, 0.02f * (float) i, -(float) row * CITY_SPACING_INTERVAL, model_matrices[i]);
 
-			spudgpu_descriptor_set_desc set_desc = {.pool = cbv_pool, .set_layouts = {cbv_layout}, .set_count = 1};
+			spudgpu_descriptor_set_desc set_desc = {.base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_DESC, NULL}, .pool = cbv_pool, .set_layouts = {cbv_layout}, .set_count = 1};
 			spudgpu_create_descriptor_sets(device, &set_desc, &cbv_sets[i]);
 
 			spudgpu_descriptor_buffer_info buf_info = {.buffer = cbv_buffer, .offset = (uint64_t) i * cbv_stride, .range = sizeof(float) * 16};
 			spudgpu_write_descriptor_set write = {
+			    .base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL},
 			    .dst_set = cbv_sets[i], .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .buffer_info = &buf_info};
 			spudgpu_update_descriptor_sets(device, &write, 1);
 		}
@@ -738,6 +756,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_shader_pipeline_desc pipeline_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_PIPELINE_DESC, NULL},
 	    .vertex_module   = vertex_module,
 	    .fragment_module = fragment_module,
 	    .vertex_attributes = {
@@ -767,6 +786,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_image_desc depth_image_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_DESC, NULL},
 	    .usage        = SPUDGPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
 	    .format       = SPUDGPU_FORMAT_D32_FLOAT,
@@ -782,6 +802,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 	spudgpu_image_view_desc depth_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_VIEW_DESC, NULL},
 	    .parent_image = depth_image,
 	    .type         = SPUDGPU_IMAGE_VIEW_TYPE_2D,
 	    .subresource_range = {.aspect_mask = SPUDGPU_ASPECT_DEPTH_BIT, .base_mip_level = 0, .mip_level_count = 1, .base_array_layer = 0, .array_layer_count = 1},
@@ -856,6 +877,7 @@ int main(int argc, char **argv) {
 		spudgpu_cmd_image_barrier(cmd, depth_image, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
 		spudgpu_rendering_begin_desc rendering_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_RENDERING_BEGIN_DESC, NULL},
 		    .color_attachments = {{.image_view = backbuffer_view, .load_op = SPUDGPU_LOAD_OP_CLEAR, .store_op = SPUDGPU_STORE_OP_STORE, .clear_color = {0.0f, 0.2f, 0.4f, 1.0f}}},
 		    .color_attachment_count = 1,
 		    .depth_attachment       = {.image_view = depth_view, .depth_load_op = SPUDGPU_LOAD_OP_CLEAR, .depth_store_op = SPUDGPU_STORE_OP_STORE, .clear_depth = 1.0f},

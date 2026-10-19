@@ -304,6 +304,7 @@ static spudgpu_shader_module load_shader_module(
 		return NULL;
 
 	spudgpu_shader_module_desc desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_MODULE_DESC, NULL},
 	    .stage      = stage,
 	    .spirv_code = code,
 	    .spirv_size = code_size,
@@ -331,6 +332,7 @@ static spudgpu_buffer create_storage_buffer_with_data(
     spudgpu_device device, spudgpu_command_list cmd, spudgpu_command_queue graphics_queue,
     const void *data, uint64_t size) {
 	spudgpu_buffer_desc staging_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_TRANSFER_SRC,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = size,
@@ -347,6 +349,7 @@ static spudgpu_buffer create_storage_buffer_with_data(
 	spudgpu_unmap_buffer(staging);
 
 	spudgpu_buffer_desc real_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_STORAGE | SPUDGPU_BUFFER_USAGE_TRANSFER_DST,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_DEVICE,
 	    .size         = size,
@@ -449,11 +452,11 @@ int main(int argc, char **argv) {
 	}
 	spudgpu_device device = devices[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {0};
+	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
 	spudgpu_get_device_properties(device, &device_properties);
 	printf("Using device: %s\n", device_properties.description);
 
-	spudgpu_mesh_shading_capabilities mesh_caps = {0};
+	spudgpu_mesh_shading_capabilities mesh_caps = {.base = {SPUD_STRUCT_TYPE_GPU_MESH_SHADING_CAPABILITIES, NULL}};
 	spudgpu_get_mesh_shading_capabilities(device, &mesh_caps);
 	if (!mesh_caps.supported) {
 		fprintf(stderr, "This device/driver doesn't support mesh shading\n");
@@ -469,6 +472,7 @@ int main(int argc, char **argv) {
 	}
 
 	spudgpu_swap_chain_desc swap_chain_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SWAP_CHAIN_DESC, NULL},
 	    .surface = surface,
 	    .queue   = graphics_queue,
 	    .width   = WINDOW_WIDTH,
@@ -490,7 +494,7 @@ int main(int argc, char **argv) {
 	// Created here (rather than just before the main loop, as in most other
 	// samples) because create_storage_buffer_with_data below already needs a
 	// command list to record its staging-buffer upload into.
-	spudgpu_command_allocator_desc allocator_desc = {.type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
+	spudgpu_command_allocator_desc allocator_desc = {.base = {SPUD_STRUCT_TYPE_GPU_COMMAND_ALLOCATOR_DESC, NULL}, .type = SPUDGPU_COMMAND_LIST_TYPE_DIRECT};
 	spudgpu_create_command_allocator(device, &allocator_desc, &command_allocator);
 
 	spudgpu_create_command_list(command_allocator, &cmd);
@@ -565,6 +569,7 @@ int main(int argc, char **argv) {
 	// ------------------------------------------------------------------
 
 	spudgpu_descriptor_set_layout_desc mesh_data_layout_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_LAYOUT_DESC, NULL},
 	    .bindings = {
 	        {.binding = 0, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_MESH},
 	        {.binding = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_MESH},
@@ -576,10 +581,11 @@ int main(int argc, char **argv) {
 	spudgpu_create_descriptor_set_layout(device, &mesh_data_layout_desc, &mesh_data_layout);
 
 	spudgpu_descriptor_pool_desc mesh_data_pool_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_POOL_DESC, NULL},
 	    .max_sets = 1, .pool_sizes = {{.descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .count = 4}}, .pool_size_count = 1};
 	spudgpu_create_descriptor_pool(device, &mesh_data_pool_desc, &mesh_data_pool);
 
-	spudgpu_descriptor_set_desc mesh_data_set_desc = {.pool = mesh_data_pool, .set_layouts = {mesh_data_layout}, .set_count = 1};
+	spudgpu_descriptor_set_desc mesh_data_set_desc = {.base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_DESC, NULL}, .pool = mesh_data_pool, .set_layouts = {mesh_data_layout}, .set_count = 1};
 	spudgpu_descriptor_set mesh_data_set = NULL;
 	spudgpu_create_descriptor_sets(device, &mesh_data_set_desc, &mesh_data_set);
 
@@ -588,10 +594,10 @@ int main(int argc, char **argv) {
 	spudgpu_descriptor_buffer_info uvi_info      = {.buffer = unique_vtx_idx_buffer, .range = uvi_size};
 	spudgpu_descriptor_buffer_info pi_info       = {.buffer = primitive_idx_buffer, .range = pi_size};
 	spudgpu_write_descriptor_set mesh_data_writes[4] = {
-	    {.dst_set = mesh_data_set, .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &vertices_info},
-	    {.dst_set = mesh_data_set, .dst_binding = 1, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &meshlets_info},
-	    {.dst_set = mesh_data_set, .dst_binding = 2, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &uvi_info},
-	    {.dst_set = mesh_data_set, .dst_binding = 3, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &pi_info},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL}, .dst_set = mesh_data_set, .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &vertices_info},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL}, .dst_set = mesh_data_set, .dst_binding = 1, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &meshlets_info},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL}, .dst_set = mesh_data_set, .dst_binding = 2, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &uvi_info},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL}, .dst_set = mesh_data_set, .dst_binding = 3, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_STORAGE_BUFFER, .buffer_info = &pi_info},
 	};
 	spudgpu_update_descriptor_sets(device, mesh_data_writes, 4);
 
@@ -600,20 +606,23 @@ int main(int argc, char **argv) {
 	// ------------------------------------------------------------------
 
 	spudgpu_descriptor_set_layout_desc globals_layout_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_LAYOUT_DESC, NULL},
 	    .bindings = {{.binding = 0, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = 1, .stage_flags = SPUDGPU_SHADER_STAGE_MESH | SPUDGPU_SHADER_STAGE_FRAGMENT}},
 	    .binding_count = 1,
 	};
 	spudgpu_create_descriptor_set_layout(device, &globals_layout_desc, &globals_layout);
 
 	spudgpu_descriptor_pool_desc globals_pool_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_POOL_DESC, NULL},
 	    .max_sets = 1, .pool_sizes = {{.descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .count = 1}}, .pool_size_count = 1};
 	spudgpu_create_descriptor_pool(device, &globals_pool_desc, &globals_pool);
 
-	spudgpu_descriptor_set_desc globals_set_desc = {.pool = globals_pool, .set_layouts = {globals_layout}, .set_count = 1};
+	spudgpu_descriptor_set_desc globals_set_desc = {.base = {SPUD_STRUCT_TYPE_GPU_DESCRIPTOR_SET_DESC, NULL}, .pool = globals_pool, .set_layouts = {globals_layout}, .set_count = 1};
 	spudgpu_descriptor_set globals_set = NULL;
 	spudgpu_create_descriptor_sets(device, &globals_set_desc, &globals_set);
 
 	spudgpu_buffer_desc globals_buffer_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_BUFFER_DESC, NULL},
 	    .usage        = SPUDGPU_BUFFER_USAGE_UNIFORM,
 	    .memory_kind  = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size         = sizeof(Globals),
@@ -624,6 +633,7 @@ int main(int argc, char **argv) {
 
 	spudgpu_descriptor_buffer_info globals_info = {.buffer = globals_buffer, .range = sizeof(Globals)};
 	spudgpu_write_descriptor_set globals_write = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_WRITE_DESCRIPTOR_SET, NULL},
 	    .dst_set = globals_set, .dst_binding = 0, .descriptor_count = 1, .descriptor_type = SPUDGPU_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .buffer_info = &globals_info};
 	spudgpu_update_descriptor_sets(device, &globals_write, 1);
 
@@ -637,6 +647,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 
 	spudgpu_shader_pipeline_desc pipeline_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_SHADER_PIPELINE_DESC, NULL},
 	    .mesh_module     = mesh_module,
 	    .fragment_module = fragment_module,
 	    .primitive_topology = SPUDGPU_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
@@ -660,6 +671,7 @@ int main(int argc, char **argv) {
 
 	// depth image created/transitioned via `cmd` before the main loop starts.
 	spudgpu_image_desc depth_image_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_DESC, NULL},
 	    .usage        = SPUDGPU_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT,
 	    .type         = SPUDGPU_IMAGE_TYPE_2D,
 	    .format       = SPUDGPU_FORMAT_D32_FLOAT,
@@ -675,6 +687,7 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 	spudgpu_image_view_desc depth_view_desc = {
+	    .base = {SPUD_STRUCT_TYPE_GPU_IMAGE_VIEW_DESC, NULL},
 	    .parent_image = depth_image,
 	    .type         = SPUDGPU_IMAGE_VIEW_TYPE_2D,
 	    .subresource_range = {.aspect_mask = 0x2 /* DEPTH, Vulkan-aligned - see spudgpu.h */, .base_mip_level = 0, .mip_level_count = 1, .base_array_layer = 0, .array_layer_count = 1},
@@ -693,10 +706,10 @@ int main(int argc, char **argv) {
 	// COMMON -- see that function's comment for why the same transition
 	// can't happen inside its own command list.
 	spudgpu_buffer_barrier buffer_barriers[4] = {
-	    {.buffer = vertices_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
-	    {.buffer = meshlets_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
-	    {.buffer = unique_vtx_idx_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
-	    {.buffer = primitive_idx_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_BUFFER_BARRIER, NULL}, .buffer = vertices_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_BUFFER_BARRIER, NULL}, .buffer = meshlets_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_BUFFER_BARRIER, NULL}, .buffer = unique_vtx_idx_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
+	    {.base = {SPUD_STRUCT_TYPE_GPU_BUFFER_BARRIER, NULL}, .buffer = primitive_idx_buffer, .state_before = SPUDGPU_RESOURCE_STATE_COMMON, .state_after = SPUDGPU_RESOURCE_STATE_UNORDERED_ACCESS},
 	};
 	spudgpu_cmd_pipeline_barrier(cmd, buffer_barriers, 4, NULL, 0);
 	spudgpu_end_command_list(cmd);
@@ -766,6 +779,7 @@ int main(int argc, char **argv) {
 		spudgpu_cmd_image_barrier_view(cmd, backbuffer_view, SPUDGPU_IMAGE_LAYOUT_UNDEFINED, SPUDGPU_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		spudgpu_rendering_begin_desc rendering_desc = {
+		    .base = {SPUD_STRUCT_TYPE_GPU_RENDERING_BEGIN_DESC, NULL},
 		    .color_attachments = {{.image_view = backbuffer_view, .load_op = SPUDGPU_LOAD_OP_CLEAR, .store_op = SPUDGPU_STORE_OP_STORE, .clear_color = {0.0f, 0.2f, 0.4f, 1.0f}}},
 		    .color_attachment_count = 1,
 		    .depth_attachment       = {.image_view = depth_view, .depth_load_op = SPUDGPU_LOAD_OP_CLEAR, .depth_store_op = SPUDGPU_STORE_OP_STORE, .clear_depth = 1.0f},
