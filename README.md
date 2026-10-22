@@ -25,7 +25,7 @@ workaround to invent here.
 | SpudGPUMeshShaders | `D3D12MeshShaders/MeshletRender` | Ported, all backends (see note below) |
 | SpudGPUBundles | `D3D12Bundles` | Ported, Vulkan/D3D12 only (see note below) |
 | SpudGPUDepthBoundsTest | `D3D12DepthBoundsTest` | Ported, all backends (see note below) |
-| SpudGPUHeaps | `D3D12SmallResources` | Written, all backends, never built or run (see note below) |
+| SpudGPUHeaps | `D3D12SmallResources` | Ported, all backends; run on D3D12 and Vulkan, not yet on Metal (see note below) |
 
 `HelloTexture` closed a real gap and worked around another. The gap it
 closed: `spudgpu_cmd_copy_buffer_to_image`/`_copy_image_to_buffer` and
@@ -104,7 +104,11 @@ than a valid simplification (see below):
   fixed-function input assembler's per-instance vertex fetch *does* correctly
   offset by `StartInstanceLocation` on every backend — this is a separate
   mechanism from the `SV_InstanceID`/`gl_InstanceIndex` system value, and is
-  the standard, actually-portable technique for per-instance data.
+  the standard, actually-portable technique for per-instance data. A
+  `first_instance` other than 0 in an indirect draw's arguments needs a
+  device created with `SPUDGPU_FEATURE_DRAW_INDIRECT_FIRST_INSTANCE`
+  (Vulkan's `drawIndirectFirstInstance`; every D3D12 and Metal adapter), so
+  the sample asks for it and stops on an adapter without it.
 
 `SpudGPUDynamicIndexing` exercises `spudgpu`'s bindless descriptor indexing
 feature for the first time (`spudgpu_bindless_register_sampled_image`,
@@ -279,8 +283,9 @@ in two:
 
 The sample was written against SpudGPU's heap calls the day they landed. It
 type-checks against the Vulkan and Metal configurations of `spudgpu.h` and
-its shaders compile with glslang, but it has not been built with a real
-toolchain or run on any backend.
+its shaders compile with glslang. It was first built and run on 2026-10-22,
+on D3D12 and Vulkan on Windows (see the end of this file); it has not run on
+Metal.
 
 See `../spudlib/CLAUDE.md` and `../CLAUDE.md` for the architecture this
 repo sits alongside.
@@ -389,3 +394,34 @@ each run with `--device 9` (a failure right after the instance is made)
 reports no live objects on D3D12. Under cdb, each run on the RTX A2000 also logs two first-chance
 C++ exceptions inside Intel's D3D12 driver as it loads, caught there, with
 no debug layer message.
+
+On 2026-10-22 every sample was built (Debug) and run again on D3D12 and
+Vulkan on Windows 11, on the Intel Iris Xe and the NVIDIA RTX A2000, and on
+D3D12's WARP adapter, after SpudGPU's adapter and device change. That was the
+first build and run of `SpudGPUHeaps` on any backend. Neither backend built at
+first: SpudAudio's WASAPI backend named `max_align_t`, which MSVC's C compiler
+doesn't have (`SPUD_MAX_ALIGN`, `spudlib/src/spudallocator.h`, now). The plain
+runs, 300 frames each, were clean on both backends: no validation layer or
+debug layer message and exit 0, but for `SpudGPUMeshShaders` on the Iris Xe,
+which has no mesh shading and exits 1 as before. Three stricter runs found two
+Vulkan bugs, both fixed in SpudLib:
+
+- Synchronization validation (`VK_KHRONOS_VALIDATION_VALIDATE_SYNC=1`)
+  reported a WRITE_AFTER_READ against `vkAcquireNextImageKHR` in every
+  sample: the barrier that takes a back buffer out of `UNDEFINED` or
+  `PRESENT_SRC` started at `TOP_OF_PIPE` (or `BOTTOM_OF_PIPE` out of
+  `SPUDGPU_RESOURCE_STATE_PRESENT`), which doesn't chain to the acquire
+  semaphore's wait at `COLOR_ATTACHMENT_OUTPUT`. Such a barrier now starts at
+  its destination stage.
+- GPU-assisted validation (`VK_LAYER_GPUAV_ENABLE=1`) reported
+  `VUID-VkDrawIndirectCommand-firstInstance-00501` in
+  `SpudGPUExecuteIndirect`: its draws' `first_instance` is the triangle's
+  index, and the Vulkan device never enabled `drawIndirectFirstInstance`.
+  That is `SPUDGPU_FEATURE_DRAW_INDIRECT_FIRST_INSTANCE` now, which the
+  sample asks for.
+
+D3D12 with GPU-based validation on (a temporary
+`SetEnableGPUBasedValidation(TRUE)`, both devices) reported nothing. After
+the fixes every sample is clean on both backends and both devices in every
+mode above, and a screenshot of each sample on the RTX A2000 showed the same
+image on D3D12 and on Vulkan.

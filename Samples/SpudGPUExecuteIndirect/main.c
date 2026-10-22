@@ -222,11 +222,19 @@ int main(int argc, char **argv) {
 	spudgpu_get_adapter_properties(adapter, &adapter_properties);
 	printf("Using device: %s\n", adapter_properties.description);
 
+	// Every draw command's first_instance picks its triangle (see the input
+	// commands below), which a device allows only with this feature.
+	if (!(adapter_properties.supported_features & SPUDGPU_FEATURE_DRAW_INDIRECT_FIRST_INSTANCE)) {
+		fprintf(stderr, "This device/driver doesn't support an indirect draw's first_instance\n");
+		goto cleanup;
+	}
+
 	// A window to present to and one direct queue, and exactly the features
 	// the sample uses: a device has only what it is created with.
 	const spudgpu_device_desc device_desc = {
 	    .base               = {SPUD_STRUCT_TYPE_GPU_DEVICE_DESC, NULL},
-	    .required_features  = SPUDGPU_FEATURE_PRESENT | (adapter_properties.supported_features & SPUDGPU_FEATURE_MULTI_DRAW_INDIRECT),
+	    .required_features  = SPUDGPU_FEATURE_PRESENT | SPUDGPU_FEATURE_DRAW_INDIRECT_FIRST_INSTANCE |
+	                         (adapter_properties.supported_features & SPUDGPU_FEATURE_MULTI_DRAW_INDIRECT),
 	    .direct_queue_count = 1,
 	    // What the sample's descriptor pools hold together, with room to
 	    // spare: the caller's to choose, and refused past the adapter's
