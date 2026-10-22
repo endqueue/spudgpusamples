@@ -141,7 +141,7 @@ int main(int argc, char **argv) {
 	// --frames N: render N frames, then leave the loop as closing the window
 	// does, through the same cleanup. Without it the sample runs until the
 	// window is closed.
-	// --device N: use the Nth device spudgpu_enumerate_devices lists. 0 if
+	// --device N: use the Nth adapter spudgpu_enumerate_adapters lists. 0 if
 	// not given.
 	uint64_t frame_limit  = 0;
 	uint32_t device_index = 0;
@@ -158,6 +158,7 @@ int main(int argc, char **argv) {
 	int exit_code                                     = 1;
 	SDL_Window *window                                = NULL;
 	spudgpu_instance instance                         = NULL;
+	spudgpu_device device                             = NULL;
 	spudgpu_command_queue graphics_queue              = NULL;
 	spudgpu_surface surface                           = NULL;
 	spudgpu_swap_chain swap_chain                     = NULL;
@@ -191,28 +192,58 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	if (SPUDFAIL(spudgpu_create_instance("SpudGPUExecuteIndirect", 1, "SpudGPUSamples", 1, &instance))) {
+	const SPUD_ALLOCATOR gpu_allocator           = spud_allocator_system();
+	const spudgpu_instance_desc gpu_instance_desc = {
+	    .base                = {SPUD_STRUCT_TYPE_GPU_INSTANCE_DESC, NULL},
+	    .allocator           = &gpu_allocator,
+	    .application_name    = "SpudGPUExecuteIndirect",
+	    .application_version = 1,
+	    .engine_name         = "SpudGPUSamples",
+	    .engine_version      = 1,
+	};
+	if (SPUDFAIL(spudgpu_create_instance(&gpu_instance_desc, &instance))) {
 		fprintf(stderr, "spudgpu_create_instance failed\n");
 		goto cleanup;
 	}
 
-	spudgpu_device *devices = NULL;
-	uint32_t device_count   = 0;
-	if (SPUDFAIL(spudgpu_enumerate_devices(instance, &devices, &device_count)) || device_count == 0) {
-		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
+	const spudgpu_adapter *adapters = NULL;
+	uint32_t adapter_count          = 0;
+	if (SPUDFAIL(spudgpu_enumerate_adapters(instance, &adapters, &adapter_count)) || adapter_count == 0) {
+		fprintf(stderr, "spudgpu_enumerate_adapters failed or listed no adapters\n");
 		goto cleanup;
 	}
-	if (device_index >= device_count) {
-		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
+	if (device_index >= adapter_count) {
+		fprintf(stderr, "--device %u: there are %u adapters\n", device_index, adapter_count);
 		goto cleanup;
 	}
-	spudgpu_device device = devices[device_index];
+	const spudgpu_adapter adapter = adapters[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
-	spudgpu_get_device_properties(device, &device_properties);
-	printf("Using device: %s\n", device_properties.description);
+	SPUDGPU_ADAPTER_PROPERTIES adapter_properties = {.base = {SPUD_STRUCT_TYPE_GPU_ADAPTER_PROPERTIES, NULL}};
+	spudgpu_get_adapter_properties(adapter, &adapter_properties);
+	printf("Using device: %s\n", adapter_properties.description);
 
-	graphics_queue = spudgpu_get_graphics_queue(device);
+	// A window to present to and one direct queue, and exactly the features
+	// the sample uses: a device has only what it is created with.
+	const spudgpu_device_desc device_desc = {
+	    .base               = {SPUD_STRUCT_TYPE_GPU_DEVICE_DESC, NULL},
+	    .required_features  = SPUDGPU_FEATURE_PRESENT | (adapter_properties.supported_features & SPUDGPU_FEATURE_MULTI_DRAW_INDIRECT),
+	    .direct_queue_count = 1,
+	    // What the sample's descriptor pools hold together, with room to
+	    // spare: the caller's to choose, and refused past the adapter's
+	    // limit.
+	    .max_descriptors    = 1024,
+	    .max_samplers       = 64,
+	    .debug_name         = "SpudGPUExecuteIndirect",
+	};
+	if (SPUDFAIL(spudgpu_create_device(adapter, &device_desc, &device))) {
+		fprintf(stderr, "spudgpu_create_device failed\n");
+		goto cleanup;
+	}
+	spudgpu_get_command_queue(device, SPUDGPU_COMMAND_LIST_TYPE_DIRECT, 0, &graphics_queue);
+	// One indirect call takes the adapter's most entries with
+	// multi-draw-indirect, else one.
+	const uint32_t max_draw_indirect_count =
+	    (spudgpu_get_device_features(device) & SPUDGPU_FEATURE_MULTI_DRAW_INDIRECT) ? adapter_properties.max_draw_indirect_count : 1;
 
 	surface = spudgpu_create_surface_from_sdl3(instance, window);
 	if (!surface) {
@@ -623,12 +654,12 @@ int main(int argc, char **argv) {
 
 		spudgpu_buffer_view graphics_vertex_buffer_views[2] = {vertex_buffer_view, scene_buffer_view};
 		spudgpu_cmd_set_vertex_buffers(cmd, 0, 2, graphics_vertex_buffer_views);
-		// One call where the device takes TRIANGLE_COUNT draws in one (D3D12,
-		// Metal, Vulkan with multiDrawIndirect), else as many calls as its
-		// max_draw_indirect_count needs, at advancing offsets.
+		// One call where the device takes TRIANGLE_COUNT draws in one (a
+		// device with SPUDGPU_FEATURE_MULTI_DRAW_INDIRECT), else as many calls
+		// as its max_draw_indirect_count needs, at advancing offsets.
 		for (uint32_t first = 0; first < TRIANGLE_COUNT;) {
 			uint32_t left  = TRIANGLE_COUNT - first;
-			uint32_t count = left < device_properties.max_draw_indirect_count ? left : device_properties.max_draw_indirect_count;
+			uint32_t count = left < max_draw_indirect_count ? left : max_draw_indirect_count;
 			spudgpu_cmd_draw_indirect(
 			    cmd,
 			    enable_culling ? output_commands_buffer : input_commands_buffer,
@@ -684,6 +715,7 @@ cleanup:
 	spudgpu_destroy_buffer(vertex_buffer);
 	spudgpu_destroy_swap_chain(swap_chain);
 	spudgpu_destroy_surface(surface);
+	spudgpu_destroy_device(device);
 	spudgpu_destroy_instance(instance);
 
 	if (window)

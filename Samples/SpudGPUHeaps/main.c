@@ -14,8 +14,8 @@
 // Deviations from the original:
 // - The vertex buffer is placed too, in a heap of device memory, and the
 //   staging buffer that fills it and the textures is placed in a heap of
-//   upload memory where the device has one (SPUDGPU_DEVICE_PROPERTIES::
-//   mappable_heaps; not a Mac without Apple silicon, where it falls back to
+//   upload memory where the device has one (SPUDGPU_FEATURE_MAPPABLE_HEAPS;
+//   not a Mac without Apple silicon, where it falls back to
 //   spudgpu_create_buffer). The original has no buffer heaps. This way the
 //   sample places every kind of resource SpudGPU can place.
 // - The title shows the heap's size, not the adapter's memory use: SpudGPU
@@ -307,7 +307,7 @@ int main(int argc, char **argv) {
 	// --frames N: render N frames, then leave the loop as closing the window
 	// does, through the same cleanup. Without it the sample runs until the
 	// window is closed.
-	// --device N: use the Nth device spudgpu_enumerate_devices lists. 0 if
+	// --device N: use the Nth adapter spudgpu_enumerate_adapters lists. 0 if
 	// not given.
 	uint64_t frame_limit  = 0;
 	uint32_t device_index = 0;
@@ -324,6 +324,7 @@ int main(int argc, char **argv) {
 	int exit_code                               = 1;
 	SDL_Window *window                          = NULL;
 	spudgpu_instance instance                   = NULL;
+	spudgpu_device device                       = NULL;
 	spudgpu_command_queue graphics_queue        = NULL;
 	spudgpu_surface surface                     = NULL;
 	spudgpu_swap_chain swap_chain               = NULL;
@@ -353,27 +354,55 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	if (!check(spudgpu_create_instance("SpudGPUHeaps", 1, "SpudGPUSamples", 1, &instance), "spudgpu_create_instance"))
+	const SPUD_ALLOCATOR gpu_allocator           = spud_allocator_system();
+	const spudgpu_instance_desc gpu_instance_desc = {
+	    .base                = {SPUD_STRUCT_TYPE_GPU_INSTANCE_DESC, NULL},
+	    .allocator           = &gpu_allocator,
+	    .application_name    = "SpudGPUHeaps",
+	    .application_version = 1,
+	    .engine_name         = "SpudGPUSamples",
+	    .engine_version      = 1,
+	};
+	if (!check(spudgpu_create_instance(&gpu_instance_desc, &instance), "spudgpu_create_instance"))
 		goto cleanup;
 
-	spudgpu_device *devices = NULL;
-	uint32_t device_count   = 0;
-	if (SPUDFAIL(spudgpu_enumerate_devices(instance, &devices, &device_count)) || device_count == 0) {
-		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
+	const spudgpu_adapter *adapters = NULL;
+	uint32_t adapter_count          = 0;
+	if (SPUDFAIL(spudgpu_enumerate_adapters(instance, &adapters, &adapter_count)) || adapter_count == 0) {
+		fprintf(stderr, "spudgpu_enumerate_adapters failed or listed no adapters\n");
 		goto cleanup;
 	}
-	if (device_index >= device_count) {
-		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
+	if (device_index >= adapter_count) {
+		fprintf(stderr, "--device %u: there are %u adapters\n", device_index, adapter_count);
 		goto cleanup;
 	}
-	spudgpu_device device = devices[device_index];
+	const spudgpu_adapter adapter = adapters[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
-	spudgpu_get_device_properties(device, &device_properties);
-	printf("Using device: %s (mappable heaps: %s)\n", device_properties.description,
-	       device_properties.mappable_heaps ? "yes" : "no");
+	SPUDGPU_ADAPTER_PROPERTIES adapter_properties = {.base = {SPUD_STRUCT_TYPE_GPU_ADAPTER_PROPERTIES, NULL}};
+	spudgpu_get_adapter_properties(adapter, &adapter_properties);
 
-	graphics_queue = spudgpu_get_graphics_queue(device);
+	// Upload heaps where the adapter has them; buffers otherwise.
+	const bool mappable_heaps = (adapter_properties.supported_features & SPUDGPU_FEATURE_MAPPABLE_HEAPS) != 0;
+	printf("Using device: %s (mappable heaps: %s)\n", adapter_properties.description, mappable_heaps ? "yes" : "no");
+
+	// A window to present to and one direct queue, and exactly the features
+	// the sample uses: a device has only what it is created with.
+	const spudgpu_device_desc device_desc = {
+	    .base               = {SPUD_STRUCT_TYPE_GPU_DEVICE_DESC, NULL},
+	    .required_features  = SPUDGPU_FEATURE_PRESENT | (adapter_properties.supported_features & SPUDGPU_FEATURE_MAPPABLE_HEAPS),
+	    .direct_queue_count = 1,
+	    // The one descriptor pool: a sampled image and a sampler per
+	    // texture. The caller's to choose, and refused past the adapter's
+	    // limit.
+	    .max_descriptors    = TEXTURE_COUNT,
+	    .max_samplers       = TEXTURE_COUNT,
+	    .debug_name         = "SpudGPUHeaps",
+	};
+	if (SPUDFAIL(spudgpu_create_device(adapter, &device_desc, &device))) {
+		fprintf(stderr, "spudgpu_create_device failed\n");
+		goto cleanup;
+	}
+	spudgpu_get_command_queue(device, SPUDGPU_COMMAND_LIST_TYPE_DIRECT, 0, &graphics_queue);
 
 	surface = spudgpu_create_surface_from_sdl3(instance, window);
 	if (!surface) {
@@ -470,7 +499,7 @@ int main(int argc, char **argv) {
 	    .memory_kind = SPUDGPU_MEMORY_KIND_UPLOAD,
 	    .size        = staging_size,
 	};
-	if (device_properties.mappable_heaps) {
+	if (mappable_heaps) {
 		spudgpu_heap_desc probe_desc = {
 		    .base = {SPUD_STRUCT_TYPE_GPU_HEAP_DESC, NULL},
 		    .memory_kind    = SPUDGPU_MEMORY_KIND_UPLOAD,
@@ -768,6 +797,7 @@ cleanup:
 	spudgpu_destroy_command_allocator(command_allocator);
 	spudgpu_destroy_swap_chain(swap_chain);
 	spudgpu_destroy_surface(surface);
+	spudgpu_destroy_device(device);
 	spudgpu_destroy_instance(instance);
 
 	if (window)

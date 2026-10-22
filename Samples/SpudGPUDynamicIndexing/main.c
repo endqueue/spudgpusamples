@@ -426,7 +426,7 @@ int main(int argc, char **argv) {
 	// --frames N: render N frames, then leave the loop as closing the window
 	// does, through the same cleanup. Without it the sample runs until the
 	// window is closed.
-	// --device N: use the Nth device spudgpu_enumerate_devices lists. 0 if
+	// --device N: use the Nth adapter spudgpu_enumerate_adapters lists. 0 if
 	// not given.
 	uint64_t frame_limit  = 0;
 	uint32_t device_index = 0;
@@ -487,35 +487,62 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	if (SPUDFAIL(spudgpu_create_instance("SpudGPUDynamicIndexing", 1, "SpudGPUSamples", 1, &instance))) {
+	const SPUD_ALLOCATOR gpu_allocator           = spud_allocator_system();
+	const spudgpu_instance_desc gpu_instance_desc = {
+	    .base                = {SPUD_STRUCT_TYPE_GPU_INSTANCE_DESC, NULL},
+	    .allocator           = &gpu_allocator,
+	    .application_name    = "SpudGPUDynamicIndexing",
+	    .application_version = 1,
+	    .engine_name         = "SpudGPUSamples",
+	    .engine_version      = 1,
+	};
+	if (SPUDFAIL(spudgpu_create_instance(&gpu_instance_desc, &instance))) {
 		fprintf(stderr, "spudgpu_create_instance failed\n");
 		goto cleanup;
 	}
 
-	spudgpu_device *devices = NULL;
-	uint32_t device_count   = 0;
-	if (SPUDFAIL(spudgpu_enumerate_devices(instance, &devices, &device_count)) || device_count == 0) {
-		fprintf(stderr, "spudgpu_enumerate_devices failed or returned no devices\n");
+	const spudgpu_adapter *adapters = NULL;
+	uint32_t adapter_count          = 0;
+	if (SPUDFAIL(spudgpu_enumerate_adapters(instance, &adapters, &adapter_count)) || adapter_count == 0) {
+		fprintf(stderr, "spudgpu_enumerate_adapters failed or listed no adapters\n");
 		goto cleanup;
 	}
-	if (device_index >= device_count) {
-		fprintf(stderr, "--device %u: there are %u devices\n", device_index, device_count);
+	if (device_index >= adapter_count) {
+		fprintf(stderr, "--device %u: there are %u adapters\n", device_index, adapter_count);
 		goto cleanup;
 	}
-	device = devices[device_index];
+	const spudgpu_adapter adapter = adapters[device_index];
 
-	SPUDGPU_DEVICE_PROPERTIES device_properties = {.base = {SPUD_STRUCT_TYPE_GPU_DEVICE_PROPERTIES, NULL}};
-	spudgpu_get_device_properties(device, &device_properties);
-	printf("Using device: %s\n", device_properties.description);
+	// The bindless table's size comes chained onto the adapter's properties.
+	SPUDGPU_BINDLESS_LIMITS bindless_limits       = {.base = {SPUD_STRUCT_TYPE_GPU_BINDLESS_LIMITS, NULL}};
+	SPUDGPU_ADAPTER_PROPERTIES adapter_properties = {.base = {SPUD_STRUCT_TYPE_GPU_ADAPTER_PROPERTIES, &bindless_limits.base}};
+	spudgpu_get_adapter_properties(adapter, &adapter_properties);
+	printf("Using device: %s\n", adapter_properties.description);
 
-	spudgpu_bindless_capabilities bindless_caps = {.base = {SPUD_STRUCT_TYPE_GPU_BINDLESS_CAPABILITIES, NULL}};
-	spudgpu_get_bindless_capabilities(device, &bindless_caps);
-	if (!bindless_caps.supported) {
+	if (!(adapter_properties.supported_features & SPUDGPU_FEATURE_BINDLESS)) {
 		fprintf(stderr, "This device/driver doesn't support bindless descriptor indexing\n");
 		goto cleanup;
 	}
+	// The bindless table comes out of the descriptor budget: its three
+	// classes' slots, and the sample's own pools beside it.
+	const uint32_t bindless_table =
+	    bindless_limits.max_sampled_images + bindless_limits.max_storage_images + bindless_limits.max_storage_buffers;
 
-	graphics_queue = spudgpu_get_graphics_queue(device);
+	// A window to present to and one direct queue, and exactly the features
+	// the sample uses: a device has only what it is created with.
+	const spudgpu_device_desc device_desc = {
+	    .base               = {SPUD_STRUCT_TYPE_GPU_DEVICE_DESC, NULL},
+	    .required_features  = SPUDGPU_FEATURE_PRESENT | SPUDGPU_FEATURE_BINDLESS,
+	    .direct_queue_count = 1,
+	    .max_descriptors    = bindless_table + 1024,
+	    .max_samplers       = 64,
+	    .debug_name         = "SpudGPUDynamicIndexing",
+	};
+	if (SPUDFAIL(spudgpu_create_device(adapter, &device_desc, &device))) {
+		fprintf(stderr, "spudgpu_create_device failed\n");
+		goto cleanup;
+	}
+	spudgpu_get_command_queue(device, SPUDGPU_COMMAND_LIST_TYPE_DIRECT, 0, &graphics_queue);
 
 	surface = spudgpu_create_surface_from_sdl3(instance, window);
 	if (!surface) {
@@ -950,6 +977,7 @@ cleanup:
 	spudgpu_destroy_command_allocator(command_allocator);
 	spudgpu_destroy_swap_chain(swap_chain);
 	spudgpu_destroy_surface(surface);
+	spudgpu_destroy_device(device);
 	spudgpu_destroy_instance(instance);
 
 	if (window)
