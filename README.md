@@ -324,6 +324,20 @@ Every sample takes two optional arguments:
 - `--device N`: use the Nth device `spudgpu_enumerate_devices` lists (0 if
   not given).
 
+Every sample's swap chain names `SPUDGPU_PRESENT_SCALING_ONE_TO_ONE`: its
+window can't be resized and its back buffers are the window's size, so
+nothing is ever scaled, and one-to-one is the scaling every surface takes.
+HelloTriangle also takes two arguments for looking at the scalings:
+
+- `--scaling one-to-one|stretch|aspect-fit`: the swap chain's present
+  scaling (one-to-one if not given). It prints which ones the surface takes
+  (`spudgpu_get_surface_present_scalings`) and stops if that isn't one.
+- `--window WxH`: a window of W by H while the back buffers stay 1280x720,
+  so the compositor shows them at another size. On macOS the window can't
+  be resized from outside instead: SDL's Metal view sets the layer's
+  `drawableSize` from the window at every resize (`SDL_cocoametalview.m`,
+  SDL 3.4.16), so a back buffer never lags a resized window there.
+
 ## Validation run, 2026-10-16
 
 On Windows 11, Debug, with the `windows-vulkan` preset and

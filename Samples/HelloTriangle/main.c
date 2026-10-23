@@ -75,13 +75,39 @@ int main(int argc, char **argv) {
 	// window is closed.
 	// --device N: use the Nth adapter spudgpu_enumerate_adapters lists. 0 if
 	// not given.
-	uint64_t frame_limit  = 0;
-	uint32_t device_index = 0;
+	// --scaling one-to-one|stretch|aspect-fit: the swap chain's present
+	// scaling. one-to-one if not given.
+	// --window WxH: make the window W by H, while the back buffers stay
+	// WINDOW_WIDTH by WINDOW_HEIGHT, so that the compositor shows them at
+	// another size and the scaling can be seen. The window's size if not
+	// given.
+	uint64_t frame_limit                    = 0;
+	uint32_t device_index                   = 0;
+	SPUDGPU_PRESENT_SCALING present_scaling = SPUDGPU_PRESENT_SCALING_ONE_TO_ONE;
+	int window_width                        = WINDOW_WIDTH;
+	int window_height                       = WINDOW_HEIGHT;
 	for (int i = 1; i + 1 < argc; ++i) {
 		if (strcmp(argv[i], "--frames") == 0)
 			frame_limit = strtoull(argv[i + 1], NULL, 10);
 		else if (strcmp(argv[i], "--device") == 0)
 			device_index = (uint32_t)strtoul(argv[i + 1], NULL, 10);
+		else if (strcmp(argv[i], "--scaling") == 0) {
+			if (strcmp(argv[i + 1], "one-to-one") == 0)
+				present_scaling = SPUDGPU_PRESENT_SCALING_ONE_TO_ONE;
+			else if (strcmp(argv[i + 1], "stretch") == 0)
+				present_scaling = SPUDGPU_PRESENT_SCALING_STRETCH;
+			else if (strcmp(argv[i + 1], "aspect-fit") == 0)
+				present_scaling = SPUDGPU_PRESENT_SCALING_ASPECT_FIT;
+			else {
+				fprintf(stderr, "--scaling %s: one-to-one, stretch or aspect-fit\n", argv[i + 1]);
+				return 1;
+			}
+		} else if (strcmp(argv[i], "--window") == 0) {
+			if (sscanf(argv[i + 1], "%dx%d", &window_width, &window_height) != 2 || window_width <= 0 || window_height <= 0) {
+				fprintf(stderr, "--window %s: WxH, both above 0\n", argv[i + 1]);
+				return 1;
+			}
+		}
 	}
 	uint64_t frames_run = 0;
 
@@ -107,7 +133,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	window = SDL_CreateWindow("SpudGPU HelloTriangle", WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+	window = SDL_CreateWindow("SpudGPU HelloTriangle", window_width, window_height, 0);
 	if (!window) {
 		fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
 		goto cleanup;
@@ -168,6 +194,21 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
+	// Which scalings the surface takes, and the one asked for among them.
+	uint32_t surface_scalings = 0;
+	if (SPUDFAIL(spudgpu_get_surface_present_scalings(device, surface, &surface_scalings))) {
+		fprintf(stderr, "spudgpu_get_surface_present_scalings failed\n");
+		goto cleanup;
+	}
+	printf("Present scalings the surface takes:%s%s%s\n",
+	       (surface_scalings & SPUDGPU_PRESENT_SCALING_ONE_TO_ONE) ? " one-to-one" : "",
+	       (surface_scalings & SPUDGPU_PRESENT_SCALING_STRETCH) ? " stretch" : "",
+	       (surface_scalings & SPUDGPU_PRESENT_SCALING_ASPECT_FIT) ? " aspect-fit" : "");
+	if (!(surface_scalings & present_scaling)) {
+		fprintf(stderr, "The surface doesn't take the --scaling asked for\n");
+		goto cleanup;
+	}
+
 	spudgpu_swap_chain_desc swap_chain_desc = {
 	    .base = {SPUD_STRUCT_TYPE_GPU_SWAP_CHAIN_DESC, NULL},
 	    .surface         = surface,
@@ -184,6 +225,10 @@ int main(int argc, char **argv) {
 #endif
 	    .format          = SPUDGPU_FORMAT_B8G8R8A8_UNORM,
 	    .present_mode    = SPUDGPU_PRESENT_MODE_FIFO,
+	    // The window can't be resized, and without --window the back
+	    // buffers are its size, so nothing is scaled; ONE_TO_ONE, the
+	    // default here, is the scaling every surface takes.
+	    .present_scaling = present_scaling,
 	    .fullscreen_mode = SPUDGPU_FULLSCREEN_MODE_WINDOWED,
 	};
 	if (SPUDFAIL(spudgpu_create_swap_chain(device, &swap_chain_desc, &swap_chain))) {

@@ -473,6 +473,9 @@ int main(int argc, char **argv) {
 	    .buffer_count    = 2,
 	    .format          = SPUDGPU_FORMAT_B8G8R8A8_UNORM,
 	    .present_mode    = SPUDGPU_PRESENT_MODE_FIFO,
+	    // The window can't be resized and the back buffers are its size, so
+	    // nothing is scaled; ONE_TO_ONE is the scaling every surface takes.
+	    .present_scaling = SPUDGPU_PRESENT_SCALING_ONE_TO_ONE,
 	    .fullscreen_mode = SPUDGPU_FULLSCREEN_MODE_WINDOWED,
 	};
 	if (SPUDFAIL(spudgpu_create_swap_chain(device, &swap_chain_desc, &swap_chain))) {
