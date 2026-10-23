@@ -331,7 +331,10 @@ HelloTriangle also takes two arguments for looking at the scalings:
 
 - `--scaling one-to-one|stretch|aspect-fit`: the swap chain's present
   scaling (one-to-one if not given). It prints which ones the surface takes
-  (`spudgpu_get_surface_present_scalings`) and stops if that isn't one.
+  (`spudgpu_get_surface_present_scalings`) and stops if that isn't one,
+  then prints the back buffers' real size (`spudgpu_get_swap_chain_desc`)
+  and draws at that size: on Vulkan without a scaling the surface gives
+  its own size.
 - `--window WxH`: a window of W by H while the back buffers stay 1280x720,
   so the compositor shows them at another size. On macOS the window can't
   be resized from outside instead: SDL's Metal view sets the layer's
@@ -439,3 +442,32 @@ D3D12 with GPU-based validation on (a temporary
 the fixes every sample is clean on both backends and both devices in every
 mode above, and a screenshot of each sample on the RTX A2000 showed the same
 image on D3D12 and on Vulkan.
+
+## Present scaling run, 2026-10-23
+
+After SpudGPU's present scaling (every sample names one), on Windows 11,
+Debug, both presets, both devices (Intel Iris Xe `--device 0`, NVIDIA RTX
+A2000 `--device 1`): the first build of the change on D3D12 and the first
+run on either backend. Every sample ran 300 frames with the D3D12 debug
+layer, the Vulkan validation layer, and the validation layer with
+`VK_LAYER_VALIDATE_SYNC=1`: no layer message, exit 0, but for
+`SpudGPUMeshShaders` on the Iris Xe (no mesh shading, exit 1 as before).
+
+HelloTriangle, `--window 900x900 --frames 600`, each `--scaling`:
+
+| Backend, device | Surface takes | Back buffers | one-to-one | stretch | aspect-fit |
+|---|---|---|---|---|---|
+| D3D12, Iris Xe | one-to-one stretch | 1280x720 | top left, cropped right | fills the window | refused |
+| D3D12, RTX A2000 | one-to-one stretch | 1280x720 | top left, cropped right | fills the window | refused |
+| Vulkan, Iris Xe | one-to-one | 900x900 | the window's size, nothing scaled | refused | refused |
+| Vulkan, RTX A2000 | one-to-one stretch | 1280x720 | top left, cropped right | fills the window | refused |
+
+A screenshot of each was taken while it ran. On the RTX A2000 the Vulkan
+captures of one-to-one and stretch are byte for byte the D3D12 ones. Two
+SpudGPU Vulkan bugs were found and fixed first (`spudlib/CLAUDE.md`,
+"Present scaling"): HelloTriangle crashed on the RTX A2000 in
+`spudgpu_get_surface_present_scalings`, and its surface offered aspect-fit
+and showed a stretch, so a Win32 surface no longer offers it. HelloTriangle
+itself drew a 1280x720 render area whatever its back buffers were, larger
+than the Iris Xe's 900x900; it now reads their size and prints it (the old
+draw was never run on 900x900 back buffers).

@@ -235,6 +235,16 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "spudgpu_create_swap_chain failed\n");
 		goto cleanup;
 	}
+	// The back buffers' real size, which is what is drawn: on Vulkan a
+	// surface without a scaling for the swap chain gives its own size.
+	spudgpu_swap_chain_desc created_desc = {.base = {SPUD_STRUCT_TYPE_GPU_SWAP_CHAIN_DESC, NULL}};
+	if (SPUDFAIL(spudgpu_get_swap_chain_desc(swap_chain, &created_desc))) {
+		fprintf(stderr, "spudgpu_get_swap_chain_desc failed\n");
+		goto cleanup;
+	}
+	const uint32_t back_buffer_width  = created_desc.width;
+	const uint32_t back_buffer_height = created_desc.height;
+	printf("Back buffers: %ux%u, window %dx%d\n", back_buffer_width, back_buffer_height, window_width, window_height);
 
 	// Vertex buffer: one hardcoded triangle, UPLOAD memory written once --
 	// same "just enough to draw a triangle" scope as the D3D12 sample.
@@ -335,17 +345,17 @@ int main(int argc, char **argv) {
 		        },
             },
 		    .color_attachment_count = 1,
-		    .width                  = WINDOW_WIDTH,
-		    .height                 = WINDOW_HEIGHT,
+		    .width                  = back_buffer_width,
+		    .height                 = back_buffer_height,
 		};
 		spudgpu_cmd_begin_rendering(cmd, &rendering_desc);
 
 		spudgpu_cmd_bind_pipeline(cmd, pipeline);
 
-		SPUDGPU_VIEWPORT viewport = {.x = 0, .y = 0, .width = WINDOW_WIDTH, .height = WINDOW_HEIGHT, .minDepth = 0.0f, .maxDepth = 1.0f};
+		SPUDGPU_VIEWPORT viewport = {.x = 0, .y = 0, .width = (float)back_buffer_width, .height = (float)back_buffer_height, .minDepth = 0.0f, .maxDepth = 1.0f};
 		spudgpu_cmd_set_viewports(cmd, 0, 1, &viewport);
 
-		SPUDGPU_SCISSOR_RECT scissor = {.x = 0, .y = 0, .width = WINDOW_WIDTH, .height = WINDOW_HEIGHT};
+		SPUDGPU_SCISSOR_RECT scissor = {.x = 0, .y = 0, .width = (float)back_buffer_width, .height = (float)back_buffer_height};
 		spudgpu_cmd_set_scissor_rects(cmd, 0, 1, &scissor);
 
 		spudgpu_cmd_set_vertex_buffers(cmd, 0, 1, &vertex_buffer_view);
