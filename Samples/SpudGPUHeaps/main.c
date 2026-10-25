@@ -457,10 +457,12 @@ int main(int argc, char **argv) {
 		for (uint32_t row = 0; row < GRID_HEIGHT; row++) {
 			float x = start_x;
 			for (uint32_t column = 0; column < GRID_WIDTH; column++) {
-				quad_vertices[index++] = (Vertex) {{x, y - offset_y, 0.0f}, {0.0f, 0.0f}};
-				quad_vertices[index++] = (Vertex) {{x, y, 0.0f}, {0.0f, 1.0f}};
-				quad_vertices[index++] = (Vertex) {{x + offset_x, y - offset_y, 0.0f}, {1.0f, 0.0f}};
-				quad_vertices[index++] = (Vertex) {{x + offset_x, y, 0.0f}, {1.0f, 1.0f}};
+				// Y negated: SpudGPU's clip space is Vulkan's on every
+				// backend, +Y down, and the original's is +Y up.
+				quad_vertices[index++] = (Vertex) {{x, -(y - offset_y), 0.0f}, {0.0f, 0.0f}};
+				quad_vertices[index++] = (Vertex) {{x, -y, 0.0f}, {0.0f, 1.0f}};
+				quad_vertices[index++] = (Vertex) {{x + offset_x, -(y - offset_y), 0.0f}, {1.0f, 0.0f}};
+				quad_vertices[index++] = (Vertex) {{x + offset_x, -y, 0.0f}, {1.0f, 1.0f}};
 				x += offset_x + margin_x;
 			}
 			y -= offset_y + margin_y;

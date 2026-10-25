@@ -8,7 +8,8 @@
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build-windows-d3d12",
       "cacheVariables": {
-        "GRAPHICS_BACKEND": "D3D12"
+        "GRAPHICS_BACKEND": "D3D12",
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo"
       }
     },
     {
@@ -18,28 +19,105 @@
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build-windows-vulkan",
       "cacheVariables": {
-        "GRAPHICS_BACKEND": "Vulkan"
+        "GRAPHICS_BACKEND": "Vulkan",
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo"
       }
     },
     {
       "name": "linux-vulkan",
       "displayName": "SpudGPU Samples Linux Vulkan",
-      "generator": "Ninja",
+      "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build-linux-vulkan",
       "cacheVariables": {
         "GRAPHICS_BACKEND": "Vulkan",
-        "SPUDGPU_LINUX_WSI": "Xlib"
+        "SPUDGPU_LINUX_WSI": "Xlib",
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo"
       }
     },
     {
       "name": "macos-metal",
       "displayName": "SpudGPU Samples macOS Metal",
-      "generator": "Ninja",
+      "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build-macos-metal",
       "cacheVariables": {
         "GRAPHICS_BACKEND": "Metal",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release;RelWithDebInfo"
       }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-d3d12-debug",
+      "displayName": "SpudGPU Samples Windows D3D12 (Debug)",
+      "configurePreset": "windows-d3d12",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-d3d12-release",
+      "displayName": "SpudGPU Samples Windows D3D12 (Release)",
+      "configurePreset": "windows-d3d12",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-d3d12-relwithdebinfo",
+      "displayName": "SpudGPU Samples Windows D3D12 (RelWithDebInfo)",
+      "configurePreset": "windows-d3d12",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-vulkan-debug",
+      "displayName": "SpudGPU Samples Windows Vulkan (Debug)",
+      "configurePreset": "windows-vulkan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-vulkan-release",
+      "displayName": "SpudGPU Samples Windows Vulkan (Release)",
+      "configurePreset": "windows-vulkan",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-vulkan-relwithdebinfo",
+      "displayName": "SpudGPU Samples Windows Vulkan (RelWithDebInfo)",
+      "configurePreset": "windows-vulkan",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "linux-vulkan-debug",
+      "displayName": "SpudGPU Samples Linux Vulkan (Debug)",
+      "configurePreset": "linux-vulkan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-vulkan-release",
+      "displayName": "SpudGPU Samples Linux Vulkan (Release)",
+      "configurePreset": "linux-vulkan",
+      "configuration": "Release"
+    },
+    {
+      "name": "linux-vulkan-relwithdebinfo",
+      "displayName": "SpudGPU Samples Linux Vulkan (RelWithDebInfo)",
+      "configurePreset": "linux-vulkan",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "macos-metal-debug",
+      "displayName": "SpudGPU Samples macOS Metal (Debug)",
+      "configurePreset": "macos-metal",
+      "configuration": "Debug"
+    },
+    {
+      "name": "macos-metal-release",
+      "displayName": "SpudGPU Samples macOS Metal (Release)",
+      "configurePreset": "macos-metal",
+      "configuration": "Release"
+    },
+    {
+      "name": "macos-metal-relwithdebinfo",
+      "displayName": "SpudGPU Samples macOS Metal (RelWithDebInfo)",
+      "configurePreset": "macos-metal",
+      "configuration": "RelWithDebInfo"
     }
   ]
 }

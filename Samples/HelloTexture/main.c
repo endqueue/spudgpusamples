@@ -341,9 +341,11 @@ int main(int argc, char **argv) {
 	// written once -- same aspect-ratio-corrected shape as the original.
 	float aspect_ratio = (float) WINDOW_WIDTH / (float) WINDOW_HEIGHT;
 	Vertex vertices[3] = {
-	    {{0.0f, 0.25f * aspect_ratio, 0.0f}, {0.5f, 0.0f}},
-	    {{0.25f, -0.25f * aspect_ratio, 0.0f}, {1.0f, 1.0f}},
-	    {{-0.25f, -0.25f * aspect_ratio, 0.0f}, {0.0f, 1.0f}},
+	    // SpudGPU's clip space is Vulkan's on every backend, +Y down: the
+	    // original's Y negated, so the apex is at the top.
+	    {{0.0f, -0.25f * aspect_ratio, 0.0f}, {0.5f, 0.0f}},
+	    {{0.25f, 0.25f * aspect_ratio, 0.0f}, {1.0f, 1.0f}},
+	    {{-0.25f, 0.25f * aspect_ratio, 0.0f}, {0.0f, 1.0f}},
 	};
 
 	spudgpu_buffer_desc vertex_buffer_desc = {

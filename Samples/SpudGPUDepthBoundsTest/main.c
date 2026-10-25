@@ -218,9 +218,11 @@ int main(int argc, char **argv) {
 	// same aspect-ratio correction on the Y axis.
 	const float aspect_ratio = (float) WINDOW_WIDTH / (float) WINDOW_HEIGHT;
 	const Vertex vertices[3] = {
-	    {{0.00f, 0.25f * aspect_ratio, 0.1f}, {1.0f, 0.0f, 0.0f, 1.0f}}, // Top, red
-	    {{0.25f, -0.25f * aspect_ratio, 0.9f}, {0.0f, 1.0f, 0.0f, 1.0f}}, // Right, green
-	    {{-0.25f, -0.25f * aspect_ratio, 0.5f}, {0.0f, 0.0f, 1.0f, 1.0f}}, // Left, blue
+	    // SpudGPU's clip space is Vulkan's on every backend, +Y down: the
+	    // original's Y negated, so the top is at the top.
+	    {{0.00f, -0.25f * aspect_ratio, 0.1f}, {1.0f, 0.0f, 0.0f, 1.0f}}, // Top, red
+	    {{0.25f, 0.25f * aspect_ratio, 0.9f}, {0.0f, 1.0f, 0.0f, 1.0f}}, // Right, green
+	    {{-0.25f, 0.25f * aspect_ratio, 0.5f}, {0.0f, 0.0f, 1.0f, 1.0f}}, // Left, blue
 	};
 
 	spudgpu_buffer_desc vertex_buffer_desc = {

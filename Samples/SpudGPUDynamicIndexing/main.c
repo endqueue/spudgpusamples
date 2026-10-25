@@ -146,7 +146,8 @@ static void mat4_perspective_rh(float fov_y_radians, float aspect, float z_near,
 	float f = 1.0f / tanf(fov_y_radians * 0.5f);
 	memset(out, 0, sizeof(float) * 16);
 	out[0] = f / aspect;
-	out[5] = f;
+	// Negated: SpudGPU's clip space is Vulkan's on every backend, +Y down.
+	out[5] = -f;
 	out[10] = z_far / (z_near - z_far);
 	out[11] = -1.0f;
 	out[14] = (z_near * z_far) / (z_near - z_far);

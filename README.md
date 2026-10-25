@@ -299,9 +299,13 @@ Linux. Pick a graphics backend via the `GRAPHICS_BACKEND` cache variable
 (`Vulkan` or `D3D12`), same as `spudlib` itself.
 
 ```
-cmake --preset windows-vulkan   # or windows-d3d12
-cmake --build build-windows-vulkan --target HelloTriangle
+cmake --preset windows-vulkan   # or windows-d3d12, linux-vulkan, macos-metal
+cmake --build --preset windows-vulkan-debug --target HelloTriangle
 ```
+
+Every preset is multi-config: `-debug`, `-release` and `-relwithdebinfo` build
+presets pick the configuration, and each sample lands in
+`build-<preset>/Samples/<Sample>/<Config>/` with its shaders beside it.
 
 On Apple Silicon, samples also build and run against `GRAPHICS_BACKEND=Metal`
 (see `spudlib/CLAUDE.md`) — except `SpudGPUDynamicIndexing`, which needs
@@ -471,3 +475,27 @@ and showed a stretch, so a Win32 surface no longer offers it. HelloTriangle
 itself drew a 1280x720 render area whatever its back buffers were, larger
 than the Iris Xe's 900x900; it now reads their size and prints it (the old
 draw was never run on 900x900 back buffers).
+
+## Linux run, 2026-10-25
+
+Every sample built (Debug, `linux-vulkan`) and ran on Fedora 44 under KDE
+Plasma on Wayland, on an Intel Iris Xe (Mesa ANV 26.2.4), with
+`VK_LAYER_KHRONOS_validation` reporting errors, warnings and performance
+warnings: no message from any of them, and each closed cleanly. SDL3 opens
+the windows as native Wayland windows, and on Vulkan SDL makes the surface
+itself, so `SPUDGPU_LINUX_WSI` doesn't apply to the samples. None of the
+windows is resizable (each is made with no flags, as the originals' are
+fixed-size), so this run tested no swap chain resize; the compositor kept
+each at its size. `SpudGPUMeshShaders` refused to start: the Iris Xe has no
+mesh shading.
+
+The screenshots showed six samples upside down. SpudGPU's clip space is
+Vulkan's on every backend (+Y down; D3D12 and Metal flip Y when they
+translate a shader), and those ports had kept the originals' +Y-up data:
+`HelloTexture`, `SpudGPUDepthBoundsTest` and `SpudGPUHeaps` now negate Y
+in their clip-space vertices, and `SpudGPUExecuteIndirect`,
+`SpudGPUBundles` and `SpudGPUDynamicIndexing` negate the projection's Y
+scale. Run again, all six draw the right way up, still with no validation
+message. `SpudGPUMeshShaders` has the same projection and also culls with
+D3D12's clockwise front faces, which the flip reverses; it is left as it
+was until it can be run on a device with mesh shading.
