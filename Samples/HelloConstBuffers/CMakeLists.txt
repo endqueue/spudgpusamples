@@ -4,9 +4,6 @@ target_link_libraries(HelloConstBuffers PRIVATE spudlib SDL3::SDL3)
 # Shaders are SPIR-V regardless of GRAPHICS_BACKEND -- the D3D12 backend
 # cross-compiles SPIR-V to HLSL at runtime via SPIRV-Cross (see
 # spudlib/CLAUDE.md), so glslc is the one shader toolchain both backends need.
-if(WIN32)
-    set(Vulkan_GLSLC_EXECUTABLE "C:/VulkanSDK/1.4.341.1/Bin/glslc.exe")
-endif()
 find_package(Vulkan REQUIRED)
 if(NOT Vulkan_GLSLC_EXECUTABLE)
     message(FATAL_ERROR "glslc not found. Install the Vulkan SDK.")

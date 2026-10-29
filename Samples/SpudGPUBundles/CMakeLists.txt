@@ -7,9 +7,6 @@ target_link_libraries(SpudGPUBundles PRIVATE spudlib SDL3::SDL3)
 # (see spudgpusamples/CMakeLists.txt's GRAPHICS_BACKEND guard -- Metal has
 # no CPU-side reusable secondary-command/bundle mechanism, see spudlib/
 # CLAUDE.md's SPUDGPU_EXT_BUNDLES section).
-if(WIN32)
-    set(Vulkan_GLSLC_EXECUTABLE "C:/VulkanSDK/1.4.341.1/Bin/glslc.exe")
-endif()
 find_package(Vulkan REQUIRED)
 if(NOT Vulkan_GLSLC_EXECUTABLE)
     message(FATAL_ERROR "glslc not found. Install the Vulkan SDK.")

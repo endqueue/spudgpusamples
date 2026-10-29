@@ -6,9 +6,6 @@ target_link_libraries(SpudGPUDynamicIndexing PRIVATE spudlib SDL3::SDL3)
 # both backends need. This sample only ever builds against Vulkan/D3D12
 # (see spudgpusamples/CMakeLists.txt's GRAPHICS_BACKEND guard -- bindless
 # descriptor indexing isn't implemented on Metal yet).
-if(WIN32)
-    set(Vulkan_GLSLC_EXECUTABLE "C:/VulkanSDK/1.4.341.1/Bin/glslc.exe")
-endif()
 find_package(Vulkan REQUIRED)
 if(NOT Vulkan_GLSLC_EXECUTABLE)
     message(FATAL_ERROR "glslc not found. Install the Vulkan SDK.")

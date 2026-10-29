@@ -6,9 +6,6 @@ target_link_libraries(SpudGPUMeshShaders PRIVATE spudlib SDL3::SDL3)
 # every backend needs. Mesh shaders (GL_EXT_mesh_shader) need SPIR-V 1.4+,
 # which glslc only emits when explicitly targeting Vulkan 1.2+ -- its default
 # target (Vulkan 1.0/SPIR-V 1.0) rejects the extension outright.
-if(WIN32)
-    set(Vulkan_GLSLC_EXECUTABLE "C:/VulkanSDK/1.4.341.1/Bin/glslc.exe")
-endif()
 find_package(Vulkan REQUIRED)
 if(NOT Vulkan_GLSLC_EXECUTABLE)
     message(FATAL_ERROR "glslc not found. Install the Vulkan SDK.")

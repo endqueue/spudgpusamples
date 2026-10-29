@@ -6,9 +6,6 @@ target_link_libraries(SpudGPUExecuteIndirect PRIVATE spudlib SDL3::SDL3)
 # backend cross-compiles it to MSL, both via spudlib's own shader-module
 # creation (see spudlib/CLAUDE.md), so glslc is the one shader toolchain
 # every backend needs.
-if(WIN32)
-    set(Vulkan_GLSLC_EXECUTABLE "C:/VulkanSDK/1.4.341.1/Bin/glslc.exe")
-endif()
 find_package(Vulkan REQUIRED)
 if(NOT Vulkan_GLSLC_EXECUTABLE)
     message(FATAL_ERROR "glslc not found. Install the Vulkan SDK.")

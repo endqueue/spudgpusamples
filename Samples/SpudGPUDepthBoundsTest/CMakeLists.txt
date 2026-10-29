@@ -9,9 +9,6 @@ target_link_libraries(SpudGPUDepthBoundsTest PRIVATE spudlib SDL3::SDL3)
 # actually does anything on a given Metal device depends on
 # spudgpu_depth_bounds_capabilities::supported at runtime (gated to
 # MTLGPUFamilyApple10, macOS/iOS 26+), not on GRAPHICS_BACKEND.
-if(WIN32)
-    set(Vulkan_GLSLC_EXECUTABLE "C:/VulkanSDK/1.4.341.1/Bin/glslc.exe")
-endif()
 find_package(Vulkan REQUIRED)
 if(NOT Vulkan_GLSLC_EXECUTABLE)
     message(FATAL_ERROR "glslc not found. Install the Vulkan SDK.")
